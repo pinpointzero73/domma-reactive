@@ -33,6 +33,15 @@ describe('observable', () => {
         expect(body).toHaveBeenCalledTimes(2);
     });
 
+    it('records the read as a dependency edge', () => {
+        // Asserted structurally, not through a notification: a read that is
+        // never recorded and a write that is never announced both present as
+        // "the graph did not move", so the two are only separable at the edge.
+        const v = observable(1);
+        const e = effect(() => v.value);
+        expect(e.deps.size).toBe(1);
+    });
+
     it('re-runs an effect on change', async () => {
         const name = observable('alice');
         const seen = [];
@@ -82,6 +91,12 @@ describe('observable', () => {
         v.value = 2;
         await tick();
         expect(body).toHaveBeenCalledTimes(1);
+    });
+
+    it('peek() leaves no dependency edge', () => {
+        const v = observable(1);
+        const e = effect(() => v.peek());
+        expect(e.deps.size).toBe(0);
     });
 
     it('set() is an alias for assigning value', () => {
@@ -137,7 +152,7 @@ describe('observable', () => {
         expect(body).toHaveBeenCalledTimes(2);
     });
 
-    it('does not notify when a mutated reference is written back', async () => {
+    it('silently drops an in-place mutation written back — use observableArray()', async () => {
         // The corollary of gating on equality: mutating in place and reassigning
         // is invisible to the graph. Task 5's observableArray exists for this.
         const list = observable(['a']);
