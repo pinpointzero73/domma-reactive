@@ -144,7 +144,7 @@ describe('reactive graph - dependency tracking', () => {
         expect(seen).toEqual(['1:11', '2:12']);
     });
 
-    it('stop function detaches an effect', async () => {
+    it('disposing an effect detaches it', async () => {
         const model = bag({v: 0});
         const body = vi.fn(() => model.get('v'));
 
@@ -202,23 +202,34 @@ describe('reactive graph - trackingProxy', () => {
         expect(seen).toEqual([0, 1]);
     });
 
-    it('tracks reads one level deep only', async () => {
-        // 'name' exists both as a nested key of 'user' and as a top-level field.
-        // Reading state.user.name must depend on 'user' alone — the nested read
-        // happens on the raw object the proxy returned, which is not itself
-        // wrapped.
-        const model = bag({user: {name: 'Ada'}, name: 'top-level decoy'});
+    it('returns nested objects unwrapped, so tracking stops at one level', () => {
+        // The mechanism behind one-level-deep tracking: `get` hands back the
+        // raw value. Any recursive variant — whatever keyspace it tracked
+        // nested reads under — would return a fresh Proxy here instead.
+        const deps = new DepMap();
+        const nested = {name: 'Ada'};
+        const state = trackingProxy({user: nested}, (k) => deps.for(k));
+
+        expect(state.user).toBe(nested);
+    });
+
+    it('registers only the top-level field when a nested property is read', async () => {
+        // 'name' is both a nested key of 'user' and a top-level field, so the
+        // two would collide if a nested read leaked into the same keyspace.
+        // Triggering 'name' below reaches a Dep that only has a subscriber if
+        // that leak happened — DepMap.trigger looks up the Dep, not the datum.
+        const model = bag({user: {name: 'Ada'}, name: 'top-level namesake'});
         const state = model.proxy();
         const body = vi.fn(() => state.user.name);
 
         effect(body);
         expect(body).toHaveBeenCalledTimes(1);
 
-        model.set('name', 'changed');          // nested key, never tracked
+        model.set('name', 'changed');          // triggers the 'name' Dep
         await tick();
         expect(body).toHaveBeenCalledTimes(1);
 
-        model.set('user', {name: 'Grace'});    // the tracked top-level field
+        model.set('user', {name: 'Grace'});    // the field actually tracked
         await tick();
         expect(body).toHaveBeenCalledTimes(2);
     });
@@ -283,5 +294,169 @@ describe('reactive graph - trackingProxy', () => {
         state.count = 5;
 
         expect(data.count).toBe(5);
+    });
+});
+
+describe('reactive graph - propagation policy', () => {
+
+    it('fires an effect once per flush, after the value graph has settled', async () => {
+        // The effect is reachable twice in one walk: directly, because it reads
+        // 'b', and again as a dependent of the computed reading 'a'. Deferring
+        // effects to the end collapses that into a single run.
+        const model = bag({a: 1, b: 1});
+        const scaled = computed(() => model.get('a') * 10, {label: 'scaled'});
+        const body = vi.fn(() => `${scaled.get()}:${model.get('b')}`);
+
+        effect(body);
+        expect(body).toHaveBeenCalledTimes(1);
+
+        model.set('a', 2);
+        model.set('b', 2);
+        await tick();
+        expect(body).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves an unobserved computed dirty instead of recomputing it in the flush', async () => {
+        const model = bag({n: 1});
+        const body = vi.fn(() => model.get('n') * 2);
+        const derived = computed(body);
+
+        expect(derived.get()).toBe(2);
+        expect(body).toHaveBeenCalledTimes(1);
+
+        model.set('n', 5);
+        await tick();
+        expect(body).toHaveBeenCalledTimes(1);   // nothing reads it — stays lazy
+
+        expect(derived.get()).toBe(10);          // the next read pays for it
+        expect(body).toHaveBeenCalledTimes(2);
+    });
+
+    it('recomputes an unobserved computed that carries a change callback', async () => {
+        // onNotify counts as an observer, so laziness must not apply.
+        const model = bag({n: 1});
+        const body = vi.fn(() => model.get('n') * 2);
+        computed(body, {onNotify: () => {}}).get();
+        expect(body).toHaveBeenCalledTimes(1);
+
+        model.set('n', 5);
+        await tick();
+        expect(body).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets a computed be revisited within one flush without warning', async () => {
+        // Diamond: 'derived' reads 'base' and 'x', and base reads 'x' too, so a
+        // write to 'x' reaches derived once directly and once via base. The
+        // second visit is legitimate and must not trip the cycle guard.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const model = bag({x: 1});
+            const base = computed(() => model.get('x') + 10, {label: 'base'});
+            const derived = computed(() => base.get() + model.get('x'), {label: 'derived'});
+            const seen = [];
+
+            effect(() => seen.push(derived.get()));
+            expect(seen).toEqual([12]);
+
+            model.set('x', 2);
+            await tick();
+
+            expect(seen).toEqual([12, 14]);
+            expect(warn).not.toHaveBeenCalled();
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it('terminates a dependency cycle with a warning rather than spinning', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            // The cycle is introduced only after both nodes have been evaluated
+            // once, so building it does not recurse infinitely.
+            const model = bag({x: 1});
+            let phase = 0;
+            let b;
+            const a = computed(() => (phase === 0 ? model.get('x') : b.get() + 1), {label: 'a'});
+            b = computed(() => a.get() + 1, {label: 'b'});
+
+            b.get();
+            phase = 1;
+
+            model.set('x', 2);
+            await tick();            // must settle, not hang
+
+            expect(warn).toHaveBeenCalled();
+            const messages = warn.mock.calls.map(([msg]) => String(msg));
+            expect(messages.some(m => /likely a dependency cycle/.test(m))).toBe(true);
+        } finally {
+            warn.mockRestore();
+        }
+    });
+});
+
+describe('reactive graph - teardown', () => {
+
+    it('disposal unlinks a computation from the deps it read', async () => {
+        // Once the watcher is gone the computed has no observers left, so the
+        // laziness skip should apply. It only can if dispose() actually removed
+        // the watcher from the computed's subscriber set.
+        const model = bag({n: 1});
+        const body = vi.fn(() => model.get('n') * 2);
+        const derived = computed(body);
+        const watcher = effect(() => derived.get());
+
+        expect(body).toHaveBeenCalledTimes(1);
+
+        watcher.dispose();
+        model.set('n', 5);
+        await tick();
+
+        expect(body).toHaveBeenCalledTimes(1);
+    });
+
+    it('disposal clears the computation own subscriber set', () => {
+        // Asserted on internals deliberately: with the computation detached
+        // from the graph there is no longer any path that can observe this
+        // leak behaviourally.
+        const model = bag({n: 1});
+        const derived = computed(() => model.get('n') * 2);
+        const watcher = effect(() => derived.get());
+
+        expect(derived.dep.subs.has(watcher)).toBe(true);
+
+        derived.dispose();
+        expect(derived.dep.subs.size).toBe(0);
+    });
+
+    it('clearing a DepMap detaches everything tracking it', async () => {
+        const deps = new DepMap();
+        const data = {n: 1};
+        const body = vi.fn(() => { deps.for('n').track(); return data.n; });
+
+        effect(body);
+        expect(body).toHaveBeenCalledTimes(1);
+
+        deps.clear();
+        data.n = 2;
+        deps.trigger('n');
+        await tick();
+
+        expect(body).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('reactive graph - error handling', () => {
+
+    it('warns and yields undefined when a computation body throws', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const boom = computed(() => { throw new Error('kaboom'); }, {label: 'boom'});
+
+            expect(boom.get()).toBeUndefined();
+            expect(warn).toHaveBeenCalled();
+            expect(String(warn.mock.calls[0][0])).toContain('boom');
+        } finally {
+            warn.mockRestore();
+        }
     });
 });
