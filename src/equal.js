@@ -42,7 +42,8 @@ function isPlainProto(proto) {
  * @param {*} a
  * @param {*} b
  * @param {WeakMap|null} seen Pairs already under comparison. Created lazily on
- *        the first object pair, so the primitive path allocates nothing.
+ *        the first pair that is actually compared structurally, so primitives,
+ *        Dates and non-plain objects all allocate nothing.
  * @returns {boolean}
  */
 function deepEqual(a, b, seen) {
@@ -63,6 +64,11 @@ function deepEqual(a, b, seen) {
 
     // Only plain objects are compared structurally. Anything else has already
     // had its chance at the reference check on the first line.
+    //
+    // This sits ABOVE the cycle guard deliberately, and safely: a non-plain
+    // pair returns without recursing, so no cycle can route through one and
+    // the guard has nothing to protect. Anyone adding structural comparison
+    // here — for Map, say — breaks that invariant and must move this below.
     if (!aIsArray && (!isPlainProto(Object.getPrototypeOf(a)) || !isPlainProto(Object.getPrototypeOf(b)))) {
         return false;
     }
