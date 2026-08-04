@@ -105,22 +105,37 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  * mutator that changed nothing — a no-op `sort()`, `splice(0, 0)`. That errs
  * towards notifying too often, never too rarely, which is the safe direction.
  *
- * The initial array is adopted by reference, not copied — matching
- * `observable()`, and necessary for the mutators to be in-place at all.
+ * The initial array, and any array assigned wholesale, is **copied** rather
+ * than adopted. Holding the caller's reference would alias it: a push through
+ * the original would change what `.value` returns without ever reaching the
+ * graph, so the data and the DOM would disagree silently and permanently, with
+ * no `notify()` to recover by. The copy costs O(n) once per assignment and
+ * does not touch the property that matters — the mutators work in place on the
+ * array held here, and nothing about them cares what it was copied from.
+ *
+ * That `observable()` adopts by reference and this does not is the point, not
+ * an inconsistency: `observable()` is safe by reference precisely because it
+ * offers no in-place path, and offering one is exactly what turns adoption
+ * into aliasing. A caller who genuinely wants the live array takes it from
+ * `peek()` — that is the deliberate escape hatch.
  *
  * @param {Array}  [initial=[]] Non-arrays are coerced to an empty array.
  * @param {Object} [options]    Same options as observable(); `equals` gates
  *                              wholesale assignment only.
- * @returns {Object}
+ * @returns {{value: Array, length: number, peek: Function, set: Function,
+ *            remove: Function, removeAll: Function, push: Function,
+ *            pop: Function, shift: Function, unshift: Function,
+ *            splice: Function, sort: Function, reverse: Function,
+ *            fill: Function, copyWithin: Function}}
  */
 export function observableArray(initial = [], options = {}) {
     const equals = options.equals || isEqual;
     const dep = new Dep();
-    let current = Array.isArray(initial) ? initial : [];
+    let current = Array.isArray(initial) ? initial.slice() : [];
 
     /** Wholesale replacement: always stores, announces only a real change. */
     const write = (next) => {
-        const arr = Array.isArray(next) ? next : [];
+        const arr = Array.isArray(next) ? next.slice() : [];
         const changed = !equals(current, arr);
         current = arr;
         if (changed) dep.trigger();
@@ -138,9 +153,14 @@ export function observableArray(initial = [], options = {}) {
 
         /**
          * Tracked, because the obvious use of a length is rendering a count,
-         * and a count that never updated would be a trap. It subscribes to the
-         * whole array rather than to the length alone — coarser than ideal,
-         * but wrong only in the direction of re-running too often.
+         * and a count that never updated would be a trap.
+         *
+         * It subscribes to the whole array rather than to the length alone,
+         * which is coarse but cheap enough not to be worth a second Dep:
+         * drainPending's equality short-circuit absorbs the coarseness for
+         * anything read through a computed, since a length recomputing to the
+         * same number propagates no further. Only an effect reading `.length`
+         * directly pays, and it pays one redundant text update.
          */
         get length() {
             dep.track();
@@ -153,7 +173,18 @@ export function observableArray(initial = [], options = {}) {
         /** Imperative alias for assigning `.value`. */
         set: (next) => write(next),
 
-        /** Remove every occurrence of a value, in place. */
+        /**
+         * Remove every occurrence of a value, in place.
+         *
+         * Notifies even when nothing matched. `remove`/`removeAll` follow the
+         * mutator rule, not the assignment rule — gating them on "did anything
+         * actually go?" would add a third write rule to save a single
+         * microtask, and "removed nothing" is a coherent patch for the M4
+         * reconciler to be handed. Worth stating here because these two are
+         * Domma's own inventions, where a caller may reasonably expect
+         * removing an absent item to be a no-op; `sort()` carries no such
+         * expectation.
+         */
         remove: (item) => {
             for (let i = current.length - 1; i >= 0; i--) {
                 if (current[i] === item) current.splice(i, 1);

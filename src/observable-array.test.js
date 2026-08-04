@@ -29,21 +29,23 @@ describe('observableArray', () => {
         expect(items.value).toEqual(['a']);
     });
 
-    it('notifies on pop, shift, unshift, splice, reverse and sort', async () => {
+    it('notifies on every one of the nine in-place mutators', async () => {
         const items = observableArray([3, 1, 2]);
         let runs = 0;
         effect(() => { items.value; runs++; });
         expect(runs).toBe(1);
 
-        items.push(4);      await tick();
-        items.pop();        await tick();
-        items.unshift(0);   await tick();
-        items.shift();      await tick();
-        items.splice(0, 1); await tick();
-        items.reverse();    await tick();
-        items.sort();       await tick();
+        items.push(4);          await tick();
+        items.pop();            await tick();
+        items.unshift(0);       await tick();
+        items.shift();          await tick();
+        items.splice(0, 1);     await tick();
+        items.reverse();        await tick();
+        items.sort();           await tick();
+        items.fill(9);          await tick();
+        items.copyWithin(0, 1); await tick();
 
-        expect(runs).toBe(8);   // initial + 7 mutations
+        expect(runs).toBe(10);   // initial + 9 mutations
     });
 
     it('remove() deletes by value and notifies', async () => {
@@ -93,6 +95,13 @@ describe('observableArray', () => {
         expect(items.push(4)).toBe(4);          // new length
         expect(items.pop()).toBe(4);            // popped value
         expect(items.splice(0, 1)).toEqual([1]); // removed slice
+
+        // sort, reverse, fill and copyWithin all return the array itself.
+        // Identity, not a copy: chaining off one must stay on the live array.
+        expect(items.sort()).toBe(items.peek());
+        expect(items.reverse()).toBe(items.peek());
+        expect(items.fill(0)).toBe(items.peek());
+        expect(items.copyWithin(0, 1)).toBe(items.peek());
     });
 
     // ── Beyond the plan's nine ────────────────────────────────────────────────
@@ -153,6 +162,40 @@ describe('observableArray', () => {
         const items = observableArray(['a', 'b', 'a', 'c', 'a']);
         items.remove('a');
         expect(items.value).toEqual(['b', 'c']);
+    });
+
+    it('copies the initial array, so the caller cannot mutate it from outside', async () => {
+        // Aliasing would be silent and unrecoverable: the source push below
+        // would change what .value returns without ever reaching the graph.
+        const source = ['a'];
+        const items = observableArray(source);
+        let runs = 0;
+        effect(() => { items.value; runs++; });
+
+        source.push('b');
+        await tick();
+        expect(items.value).toEqual(['a']);
+        expect(runs).toBe(1);
+    });
+
+    it('copies an assigned array, so the caller cannot mutate it from outside', async () => {
+        const items = observableArray([]);
+        const source = ['a'];
+        let runs = 0;
+        effect(() => { items.value; runs++; });
+
+        items.value = source;
+        await tick();
+        source.push('b');
+        await tick();
+        expect(items.value).toEqual(['a']);
+        expect(runs).toBe(2);      // the assignment, and nothing after it
+    });
+
+    it('peek() is the escape hatch to the live array', () => {
+        const items = observableArray(['a']);
+        items.peek().push('b');
+        expect(items.value).toEqual(['a', 'b']);
     });
 
     it('coerces non-array input and non-array assignment to an empty array', () => {
