@@ -1,0 +1,28 @@
+{
+  "name": "domma-reactive",
+  "version": "0.1.0",
+  "description": "Dependency-tracked reactivity and DOM bindings. The reactive core of Domma, usable standalone.",
+  "type": "module",
+  "main": "dist/domma-reactive.min.js",
+  "module": "dist/domma-reactive.esm.js",
+  "exports": {
+    ".": {
+      "import": "./dist/domma-reactive.esm.js",
+      "require": "./dist/domma-reactive.min.js"
+    }
+  },
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "rollup -c",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "keywords": ["reactive", "observable", "computed", "dependency-tracking", "domma"],
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^4.0.16",
+    "jsdom": "^24.1.3",
+    "rollup": "^4.0.0",
+    "@rollup/plugin-terser": "^0.4.4"
+  }
+}
