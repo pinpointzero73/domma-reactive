@@ -19,7 +19,8 @@
     "build": "rollup -c",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:dist": "npm run build && node scripts/verify-dist.mjs"
+    "test:dist": "npm run build && node scripts/verify-dist.mjs",
+    "prepublishOnly": "npm run test:run && npm run test:dist"
   },
   "keywords": ["reactive", "observable", "computed", "dependency-tracking", "domma"],
   "license": "MIT",
