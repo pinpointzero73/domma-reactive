@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "description": "Dependency-tracked reactivity and DOM bindings. The reactive core of Domma, usable standalone.",
   "type": "module",
-  "main": "dist/domma-reactive.min.js",
-  "module": "dist/domma-reactive.esm.js",
+  "main": "./dist/domma-reactive.cjs",
+  "module": "./dist/domma-reactive.esm.js",
+  "browser": "./dist/domma-reactive.min.js",
   "exports": {
     ".": {
       "import": "./dist/domma-reactive.esm.js",
-      "require": "./dist/domma-reactive.min.js"
-    }
+      "require": "./dist/domma-reactive.cjs",
+      "default": "./dist/domma-reactive.esm.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": ["dist/", "README.md", "LICENSE"],
   "scripts": {
