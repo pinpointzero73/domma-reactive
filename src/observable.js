@@ -74,3 +74,111 @@ export function observable(initial, options = {}) {
         set: (next) => write(next)
     };
 }
+
+// ── Array ─────────────────────────────────────────────────────────────────────
+
+/** Array methods that mutate in place and must therefore notify. */
+const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin'];
+
+/**
+ * Create an observable array.
+ *
+ * `.value` is the underlying array and is tracked on read. The in-place
+ * mutators notify after running, so a `push` is a single notification rather
+ * than a wholesale replacement — which the keyed reconciler in M4 turns into
+ * a single DOM insert.
+ *
+ * Two write paths, two rules, deliberately:
+ *
+ *   - **Mutators notify unconditionally.** They cannot go through an equality
+ *     gate, because an in-place mutation leaves the array the same reference
+ *     as itself: `isEqual(current, current)` is true no matter what `push` did.
+ *     Comparing would mean holding a copy and diffing it, which costs O(n) per
+ *     mutation and throws away the one thing worth knowing — that this was a
+ *     push, of that item, at that index. `dep.trigger()` below is where M4
+ *     attaches that patch information.
+ *
+ *   - **Wholesale assignment is gated**, exactly as `observable()` is, so
+ *     replacing the array with a deeply equal one stays quiet.
+ *
+ * The accepted cost of the first rule is a spurious notification from a
+ * mutator that changed nothing — a no-op `sort()`, `splice(0, 0)`. That errs
+ * towards notifying too often, never too rarely, which is the safe direction.
+ *
+ * The initial array is adopted by reference, not copied — matching
+ * `observable()`, and necessary for the mutators to be in-place at all.
+ *
+ * @param {Array}  [initial=[]] Non-arrays are coerced to an empty array.
+ * @param {Object} [options]    Same options as observable(); `equals` gates
+ *                              wholesale assignment only.
+ * @returns {Object}
+ */
+export function observableArray(initial = [], options = {}) {
+    const equals = options.equals || isEqual;
+    const dep = new Dep();
+    let current = Array.isArray(initial) ? initial : [];
+
+    /** Wholesale replacement: always stores, announces only a real change. */
+    const write = (next) => {
+        const arr = Array.isArray(next) ? next : [];
+        const changed = !equals(current, arr);
+        current = arr;
+        if (changed) dep.trigger();
+    };
+
+    const api = {
+        get value() {
+            dep.track();
+            return current;
+        },
+
+        set value(next) {
+            write(next);
+        },
+
+        /**
+         * Tracked, because the obvious use of a length is rendering a count,
+         * and a count that never updated would be a trap. It subscribes to the
+         * whole array rather than to the length alone — coarser than ideal,
+         * but wrong only in the direction of re-running too often.
+         */
+        get length() {
+            dep.track();
+            return current.length;
+        },
+
+        /** Read without registering a dependency. */
+        peek: () => current,
+
+        /** Imperative alias for assigning `.value`. */
+        set: (next) => write(next),
+
+        /** Remove every occurrence of a value, in place. */
+        remove: (item) => {
+            for (let i = current.length - 1; i >= 0; i--) {
+                if (current[i] === item) current.splice(i, 1);
+            }
+            dep.trigger();
+            return api;
+        },
+
+        /** Empty the array, in place. */
+        removeAll: () => {
+            current.length = 0;
+            dep.trigger();
+            return api;
+        }
+    };
+
+    // In-place mutators: run the native method against the live array, hand
+    // back exactly what it returned, and announce the change directly.
+    for (const name of MUTATORS) {
+        api[name] = (...args) => {
+            const result = Array.prototype[name].apply(current, args);
+            dep.trigger();
+            return result;
+        };
+    }
+
+    return api;
+}
