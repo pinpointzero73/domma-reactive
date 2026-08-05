@@ -19,7 +19,9 @@
  *                   in scope, which is what a browser actually provides
  *
  * Each route must expose the full public surface *and* drive a real chain
- * end to end, because a bundle can export names that do not work.
+ * end to end, because a bundle can export names that do not work. Two chains
+ * are driven: the reactive graph, and the string-only half of the template
+ * compiler (the half that needs no `document` — see assertCompiler).
  *
  * Deliberately not part of `vitest run`: it needs `dist/`, and the normal
  * suite must never depend on a build having happened. Run via `npm run
@@ -47,8 +49,20 @@ const EXPECTED = [
     'effect',
     'untracked',
     'trackingProxy',
-    'flushSync'
+    'flushSync',
+    'annotate',
+    'compile',
+    'scanBlocks',
+    'TemplateCompiler'
 ];
+
+/**
+ * Exports that are namespace objects rather than functions.
+ * Checked for shape below instead of callability.
+ */
+const NAMESPACES = {
+    TemplateCompiler: ['annotate', 'compile', 'scanBlocks', 'resolvePath']
+};
 
 const failures = [];
 
@@ -81,8 +95,50 @@ function assertSurface(api, label) {
     }
     assert(missing.length === 0, `${label}: missing ${missing.join(', ')}`);
 
-    const uncallable = EXPECTED.filter((name) => typeof api[name] !== 'function');
+    const uncallable = EXPECTED.filter(
+        (name) => !(name in NAMESPACES) && typeof api[name] !== 'function'
+    );
     assert(uncallable.length === 0, `${label}: present but not callable — ${uncallable.join(', ')}`);
+
+    for (const [name, members] of Object.entries(NAMESPACES)) {
+        const ns = api[name];
+        assert(ns !== null && typeof ns === 'object', `${label}: ${name} is not a namespace object`);
+        const broken = members.filter((member) => typeof ns[member] !== 'function');
+        assert(broken.length === 0, `${label}: ${name} missing callable ${broken.join(', ')}`);
+    }
+}
+
+/**
+ * The compiler survived bundling.
+ *
+ * Only the string-only half is exercised here. `compile()` needs a `document`
+ * (see the DOM note in src/index.js) and none of these three routes has one:
+ * Node has no DOM, and the <script> route runs in a bare vm context. That is
+ * the correct boundary to test at — if `annotate` had been dropped or mangled
+ * by the bundler, this catches it; `compile` is covered by the jsdom suite.
+ */
+function assertCompiler(api, label) {
+    const {annotated, bindings} = api.annotate('<p>{{a}}</p>');
+
+    assert(
+        annotated.includes('data-dm-t="0_txt"'),
+        `${label}: annotate() did not insert a text anchor — got ${annotated}`
+    );
+    assert(
+        bindings.length === 1 && bindings[0].kind === 'text' && bindings[0].expr === 'a',
+        `${label}: expected one text binding on 'a', got ${JSON.stringify(bindings)}`
+    );
+
+    const blocks = api.scanBlocks('{{#if a}}x{{/if}}');
+    assert(
+        blocks.length === 1 && blocks[0].kind === 'if',
+        `${label}: scanBlocks() did not find the if block`
+    );
+
+    assert(
+        api.TemplateCompiler.resolvePath({user: {email: 'a@b.c'}}, 'user.email') === 'a@b.c',
+        `${label}: TemplateCompiler.resolvePath() did not resolve a dotted path`
+    );
 }
 
 /** observable → computed → effect → write → flushSync, for real. */
@@ -131,12 +187,14 @@ await check('require() through the exports map (CommonJS consumer)', () => {
     const api = require(pkg.name);
     assertSurface(api, 'require()');
     assertChain(api, 'require()');
+    assertCompiler(api, 'require()');
 });
 
 await check('import() through the exports map (ESM consumer)', async () => {
     const api = await import(pkg.name);
     assertSurface(api, 'import()');
     assertChain(api, 'import()');
+    assertCompiler(api, 'import()');
 });
 
 await check('UMD bundle as a browser <script> (no module/exports in scope)', () => {
@@ -155,6 +213,7 @@ await check('UMD bundle as a browser <script> (no module/exports in scope)', () 
     assert(api !== undefined, 'the UMD bundle did not define a DommaReactive global');
     assertSurface(api, 'window.DommaReactive');
     assertChain(api, 'window.DommaReactive');
+    assertCompiler(api, 'window.DommaReactive');
 });
 
 if (failures.length > 0) {

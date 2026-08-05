@@ -24,20 +24,40 @@ import {
     untracked
 } from './graph.js';
 import * as graph from './graph.js';
+import {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
 
 const SURFACE = [
-    'Computation', 'Dep', 'DepMap',
-    'computed', 'effect', 'flushSync', 'isEqual',
-    'observable', 'observableArray', 'trackingProxy', 'untracked'
+    'Computation', 'Dep', 'DepMap', 'TemplateCompiler',
+    'annotate', 'compile', 'computed', 'effect', 'flushSync', 'isEqual',
+    'observable', 'observableArray', 'scanBlocks', 'trackingProxy', 'untracked'
 ];
+
+/**
+ * The one export that is not a function. `TemplateCompiler` is a namespace
+ * object grouping the compiler's three named exports plus `resolvePath`, which
+ * has no named export of its own. It is listed here rather than special-cased
+ * inline so that a SECOND non-function export cannot slip in unnoticed.
+ */
+const NAMESPACE_EXPORTS = ['TemplateCompiler'];
 
 describe('public API', () => {
     it('exports exactly the intended surface', () => {
         expect(Object.keys(api).sort()).toEqual(SURFACE);
     });
 
-    it('every export is callable or constructible', () => {
+    it('every export is callable, constructible, or a namespace of those', () => {
         for (const [name, value] of Object.entries(api)) {
+            if (NAMESPACE_EXPORTS.includes(name)) {
+                // A namespace earns its exemption only by being a plain object
+                // whose every member is itself callable — an empty object or
+                // one carrying data would still fail here.
+                expect(typeof value, `${name} should be an object`).toBe('object');
+                expect(Object.keys(value).length, `${name} should not be empty`).toBeGreaterThan(0);
+                for (const [member, fn] of Object.entries(value)) {
+                    expect(typeof fn, `${name}.${member} should be a function`).toBe('function');
+                }
+                continue;
+            }
             expect(typeof value, `${name} should be a function`).toBe('function');
         }
     });
@@ -58,6 +78,26 @@ describe('public API', () => {
         expect(api.untracked, 'untracked').toBe(untracked);
         expect(api.trackingProxy, 'trackingProxy').toBe(trackingProxy);
         expect(api.flushSync, 'flushSync').toBe(flushSync);
+        expect(api.annotate, 'annotate').toBe(annotate);
+        expect(api.compile, 'compile').toBe(compile);
+        expect(api.scanBlocks, 'scanBlocks').toBe(scanBlocks);
+        expect(api.TemplateCompiler, 'TemplateCompiler').toBe(TemplateCompiler);
+    });
+
+    it('binds the TemplateCompiler namespace to the same functions it exports', () => {
+        // The namespace is a second route to three of the names above. If the
+        // two routes ever diverge, a caller reaching through the object gets
+        // different behaviour from one importing the named export — and the
+        // pairwise checks above cannot see it, because they only test the
+        // object's identity, never its contents.
+        expect(api.TemplateCompiler.annotate, 'TemplateCompiler.annotate').toBe(api.annotate);
+        expect(api.TemplateCompiler.compile, 'TemplateCompiler.compile').toBe(api.compile);
+        expect(api.TemplateCompiler.scanBlocks, 'TemplateCompiler.scanBlocks').toBe(api.scanBlocks);
+
+        // resolvePath is reachable ONLY here. If it ever gains a named export,
+        // SURFACE must grow and this comment is wrong.
+        expect(typeof api.TemplateCompiler.resolvePath).toBe('function');
+        expect(api, 'resolvePath should not be a named export').not.toHaveProperty('resolvePath');
     });
 
     it('gives every name a distinct implementation', () => {
@@ -87,8 +127,9 @@ describe('public API', () => {
         for (const name of ['DepMap', 'trackingProxy', 'computed', 'effect', 'untracked', 'flushSync']) {
             expect(api, `models.js needs ${name}`).toHaveProperty(name);
         }
-        // src/component-factory.js imports these three.
-        for (const name of ['computed', 'effect', 'untracked']) {
+        // src/component-factory.js imports these three from the package, plus
+        // TemplateCompiler, which used to be a local file in Domma.
+        for (const name of ['computed', 'effect', 'untracked', 'TemplateCompiler']) {
             expect(api, `component-factory.js needs ${name}`).toHaveProperty(name);
         }
     });
@@ -114,5 +155,30 @@ describe('public API', () => {
         count.set(9);
         api.flushSync();
         expect(seen).toEqual([2, 10]);
+    });
+
+    it('drives a compiled binding from an observable, through the surface alone', () => {
+        // The two halves of the package are only worth shipping together if
+        // they compose: the graph decides WHEN to update, the compiler decides
+        // WHAT. Nothing else in either suite crosses that seam.
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+
+        const name = api.observable('alice');
+
+        // A renderer is the caller's to supply — the package has none.
+        const stubRender = (tmpl, data) => tmpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => data[k] ?? '');
+
+        const ctrl = api.compile('<b>{{name}}</b>', {name: name.value}, host, stubRender);
+        const textId = ctrl.bindings.find(b => b.kind === 'text').id;
+
+        api.effect(() => ctrl.update(textId, {name: name.value}));
+        expect(host.textContent).toBe('alice');
+
+        name.set('bob');
+        api.flushSync();
+        expect(host.textContent).toBe('bob');
+
+        host.remove();
     });
 });
