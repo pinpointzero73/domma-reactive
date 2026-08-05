@@ -25,11 +25,23 @@ import {
 } from './graph.js';
 import * as graph from './graph.js';
 import {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
+import {
+    clearExpressionCache,
+    compileExpression,
+    evaluateAst,
+    evaluateExpression,
+    parseExpression,
+    registerHelper,
+    unregisterHelper
+} from './expression.js';
+import * as expression from './expression.js';
 
 const SURFACE = [
     'Computation', 'Dep', 'DepMap', 'TemplateCompiler',
-    'annotate', 'compile', 'computed', 'effect', 'flushSync', 'isEqual',
-    'observable', 'observableArray', 'scanBlocks', 'trackingProxy', 'untracked'
+    'annotate', 'clearExpressionCache', 'compile', 'compileExpression', 'computed',
+    'effect', 'evaluateAst', 'evaluateExpression', 'flushSync', 'isEqual',
+    'observable', 'observableArray', 'parseExpression', 'registerHelper',
+    'scanBlocks', 'trackingProxy', 'unregisterHelper', 'untracked'
 ];
 
 /**
@@ -82,6 +94,13 @@ describe('public API', () => {
         expect(api.compile, 'compile').toBe(compile);
         expect(api.scanBlocks, 'scanBlocks').toBe(scanBlocks);
         expect(api.TemplateCompiler, 'TemplateCompiler').toBe(TemplateCompiler);
+        expect(api.parseExpression, 'parseExpression').toBe(parseExpression);
+        expect(api.evaluateAst, 'evaluateAst').toBe(evaluateAst);
+        expect(api.evaluateExpression, 'evaluateExpression').toBe(evaluateExpression);
+        expect(api.compileExpression, 'compileExpression').toBe(compileExpression);
+        expect(api.registerHelper, 'registerHelper').toBe(registerHelper);
+        expect(api.unregisterHelper, 'unregisterHelper').toBe(unregisterHelper);
+        expect(api.clearExpressionCache, 'clearExpressionCache').toBe(clearExpressionCache);
     });
 
     it('binds the TemplateCompiler namespace to the same functions it exports', () => {
@@ -118,6 +137,13 @@ describe('public API', () => {
             expect(graph[internal], `graph.js should still have ${internal}`).toBeDefined();
             expect(api, `${internal} should not be public`).not.toHaveProperty(internal);
         }
+    });
+
+    it('withholds MAX_DEPTH, which is a safety limit rather than a setting', () => {
+        // Same two-sided assertion: it must still exist for the tests that pin
+        // it, and must not be published as though tuning it were supported.
+        expect(expression.MAX_DEPTH, 'expression.js should still have MAX_DEPTH').toBe(64);
+        expect(api, 'MAX_DEPTH should not be public').not.toHaveProperty('MAX_DEPTH');
     });
 
     // ── Sufficiency for Domma ────────────────────────────────────────────────
@@ -180,5 +206,25 @@ describe('public API', () => {
         expect(host.textContent).toBe('bob');
 
         host.remove();
+    });
+
+    it('drives an expression from an observable, through the surface alone', () => {
+        // M3 will wire this seam for real. Proving it composes now is what
+        // makes shipping the evaluator ahead of the binding layer honest.
+        api.registerHelper('upper', (s) => String(s).toUpperCase());
+
+        const count = api.observable(0);
+        const evaluate = api.compileExpression("count > 1 ? upper(label) : 'none'");
+        const seen = [];
+
+        api.effect(() => seen.push(evaluate({count: count.value, label: 'many'})));
+        expect(seen).toEqual(['none']);
+
+        count.set(5);
+        api.flushSync();
+        expect(seen).toEqual(['none', 'MANY']);
+
+        api.unregisterHelper('upper');
+        api.clearExpressionCache();
     });
 });

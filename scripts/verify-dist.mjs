@@ -19,9 +19,15 @@
  *                   in scope, which is what a browser actually provides
  *
  * Each route must expose the full public surface *and* drive a real chain
- * end to end, because a bundle can export names that do not work. Two chains
- * are driven: the reactive graph, and the string-only half of the template
- * compiler (the half that needs no `document` — see assertCompiler).
+ * end to end, because a bundle can export names that do not work. Three chains
+ * are driven: the reactive graph, the string-only half of the template compiler
+ * (the half that needs no `document` — see assertCompiler), and the expression
+ * evaluator, including its prototype guard.
+ *
+ * The bundles are also scanned for dynamic code construction. src/ is checked
+ * by the unit suite, but a bundler or minifier is perfectly capable of emitting
+ * a Function constructor that no source file contains, and acceptance criterion
+ * 7 is about the *package*, not the sources.
  *
  * Deliberately not part of `vitest run`: it needs `dist/`, and the normal
  * suite must never depend on a build having happened. Run via `npm run
@@ -53,7 +59,14 @@ const EXPECTED = [
     'annotate',
     'compile',
     'scanBlocks',
-    'TemplateCompiler'
+    'TemplateCompiler',
+    'parseExpression',
+    'evaluateAst',
+    'evaluateExpression',
+    'compileExpression',
+    'registerHelper',
+    'unregisterHelper',
+    'clearExpressionCache'
 ];
 
 /**
@@ -141,6 +154,62 @@ function assertCompiler(api, label) {
     );
 }
 
+/**
+ * The expression evaluator survived bundling — including its guard.
+ *
+ * A minifier that mangled the blocked-key set, or dropped the `String(key)`
+ * coercion, would leave every name present and callable and the package
+ * silently insecure. Nothing in a `src/`-facing suite can see that either.
+ */
+function assertExpression(api, label) {
+    // Half of what follows is hostile input, and every hostile input warns.
+    // The <script> route has its own console (a silent stub in the sandbox);
+    // this quietens the two Node routes.
+    const realWarn = console.warn;
+    console.warn = () => {};
+    try {
+        checkExpression(api, label);
+    } finally {
+        console.warn = realWarn;
+    }
+}
+
+function checkExpression(api, label) {
+    const {compileExpression, evaluateExpression, registerHelper, unregisterHelper} = api;
+
+    registerHelper('upper', (s) => String(s).toUpperCase());
+
+    const evaluate = compileExpression("n > 1 ? upper(name) : 'none'");
+    assert(typeof evaluate === 'function', `${label}: compileExpression did not return a function`);
+    assert(
+        evaluate({n: 2, name: 'ada'}) === 'ADA',
+        `${label}: expected ADA, got ${JSON.stringify(evaluate({n: 2, name: 'ada'}))}`
+    );
+    assert(
+        evaluate({n: 0, name: 'ada'}) === 'none',
+        `${label}: the ternary took the wrong branch`
+    );
+
+    // Precedence survived, which a broken table would not show above.
+    assert(evaluateExpression('1 + 2 * 3', {}) === 7, `${label}: precedence is wrong in the bundle`);
+
+    // The guard survived, in all three forms.
+    const hostile = ['x.__proto__', "x['__proto__']", 'x[k]', 'x.constructor'];
+    for (const source of hostile) {
+        const value = evaluateExpression(source, {x: {}, k: '__proto__'});
+        assert(value === undefined, `${label}: ${source} was not blocked — got ${String(value)}`);
+    }
+    assert({}.polluted === undefined, `${label}: Object.prototype was polluted`);
+
+    // Only registered helpers are callable.
+    assert(
+        evaluateExpression('alert(1)', {}) === undefined,
+        `${label}: an unregistered function was callable`
+    );
+
+    unregisterHelper('upper');
+}
+
 /** observable → computed → effect → write → flushSync, for real. */
 function assertChain(api, label) {
     const {observable, computed, effect, flushSync} = api;
@@ -188,6 +257,7 @@ await check('require() through the exports map (CommonJS consumer)', () => {
     assertSurface(api, 'require()');
     assertChain(api, 'require()');
     assertCompiler(api, 'require()');
+    assertExpression(api, 'require()');
 });
 
 await check('import() through the exports map (ESM consumer)', async () => {
@@ -195,6 +265,7 @@ await check('import() through the exports map (ESM consumer)', async () => {
     assertSurface(api, 'import()');
     assertChain(api, 'import()');
     assertCompiler(api, 'import()');
+    assertExpression(api, 'import()');
 });
 
 await check('UMD bundle as a browser <script> (no module/exports in scope)', () => {
@@ -202,8 +273,10 @@ await check('UMD bundle as a browser <script> (no module/exports in scope)', () 
 
     // A bare context: no `module`, no `exports`, no `define` — exactly what a
     // script tag gets, and the only condition under which UMD takes its
-    // global-assignment branch.
-    const context = vm.createContext({});
+    // global-assignment branch. A `console` IS provided, because every browser
+    // has one and the package warns through it; withholding it would make the
+    // sandbox less like a browser, not more.
+    const context = vm.createContext({console: {warn() {}, log() {}, error() {}}});
     assert(vm.runInContext('typeof module', context) === 'undefined', 'sandbox leaked `module`');
     assert(vm.runInContext('typeof exports', context) === 'undefined', 'sandbox leaked `exports`');
 
@@ -214,6 +287,23 @@ await check('UMD bundle as a browser <script> (no module/exports in scope)', () 
     assertSurface(api, 'window.DommaReactive');
     assertChain(api, 'window.DommaReactive');
     assertCompiler(api, 'window.DommaReactive');
+    assertExpression(api, 'window.DommaReactive');
+});
+
+await check('no dynamic code construction in any bundle (CSP: script-src \'self\')', () => {
+    const forbidden = [
+        [/\beval\s*\(/, 'a call to eval'],
+        [/\bnew\s+Function\b/, 'the Function constructor'],
+        [/\bFunction\s*\(/, 'a call to Function'],
+        [/\b(setTimeout|setInterval)\s*\(\s*['"`]/, 'a string-bodied timer']
+    ];
+
+    for (const relative of [pkg.main, pkg.module, pkg.browser]) {
+        const source = readFileSync(join(root, relative), 'utf8');
+        for (const [pattern, description] of forbidden) {
+            assert(!pattern.test(source), `${relative} contains ${description}`);
+        }
+    }
 });
 
 if (failures.length > 0) {

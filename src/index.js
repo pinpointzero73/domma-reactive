@@ -23,11 +23,27 @@
  * ── The compiler owns bindings, not templating ───────────────────────────────
  *
  * `compile(template, data, container, renderFn)` takes the mustache renderer as
- * a PARAMETER. This package therefore ships no template engine and no
- * expression evaluator: it contributes the anchor and binding machinery — which
- * region of the DOM belongs to which expression, and what re-renders when — and
- * the caller injects the evaluation. Domma passes `utils.render`. Any function
- * of the shape `(template, data) => string` will do.
+ * a PARAMETER. This package therefore ships no template engine: it contributes
+ * the anchor and binding machinery — which region of the DOM belongs to which
+ * expression, and what re-renders when — and the caller injects the rendering.
+ * Domma passes `utils.render`. Any function of the shape
+ * `(template, data) => string` will do.
+ *
+ * ── The expression evaluator is a separate thing from that ───────────────────
+ *
+ * expression.js evaluates ONE expression against a binding context. It is not a
+ * template engine and does not know what a template is; the compiler above does
+ * not use it yet (that is M3). It is published now because it is independently
+ * useful and independently tested, and because the guarantee it carries — no
+ * dynamic code construction anywhere, so bindings work under `script-src
+ * 'self'` — is a property of the package, not of one milestone.
+ *
+ * Seven names are exported: parse a source to an AST, evaluate an AST, do both
+ * in one call, compile a source to a reusable evaluator, and register /
+ * unregister / clear. `MAX_DEPTH` is deliberately NOT among them: it is a
+ * hard-coded safety limit rather than a setting, and exporting a number invites
+ * the belief that changing it is supported. It stays readable from
+ * expression.js for the tests that pin it.
  *
  * Three names from graph.js are withheld on purpose:
  *
@@ -63,3 +79,16 @@ export {
 // named export. That asymmetry is inherited from Domma and kept deliberately:
 // promoting it would add a second, redundant way to spell the same function.
 export {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
+
+// Flat, with no grouping namespace to mirror TemplateCompiler. That object
+// exists because Domma already had one; inventing a second route to these
+// seven would be exactly the redundancy the note above declines.
+export {
+    clearExpressionCache,
+    compileExpression,
+    evaluateAst,
+    evaluateExpression,
+    parseExpression,
+    registerHelper,
+    unregisterHelper
+} from './expression.js';
