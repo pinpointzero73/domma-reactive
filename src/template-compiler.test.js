@@ -15,9 +15,10 @@
 // contract the compiler actually depends on. Anything these tests prove holds
 // for any renderer meeting it.
 
-import {beforeEach, describe, expect, it} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
 import {render} from './support/mini-render.js';
+import {clearExpressionCache} from './expression.js';
 
 describe('template-compiler - annotation', () => {
 
@@ -284,5 +285,153 @@ describe('template-compiler - the TemplateCompiler namespace', () => {
         expect(resolvePath({user: {email: 'a@b.c'}}, 'user.email')).toBe('a@b.c');
         expect(resolvePath({user: null}, 'user.email')).toBeUndefined();
         expect(resolvePath({}, 'nope')).toBeUndefined();
+    });
+});
+
+// ── M3 additions ─────────────────────────────────────────────────────────────
+
+describe('template-compiler - the renderer is optional', () => {
+
+    let host;
+    beforeEach(() => {
+        host = document.createElement('div');
+        document.body.appendChild(host);
+    });
+
+    it('renders with three arguments — the standalone case', () => {
+        // Before M3 this threw "renderFn is not a function", which made the
+        // published package unusable without bringing your own engine.
+        expect(() => compile('<p>{{name}}</p>', {name: 'Ada'}, host)).not.toThrow();
+        expect(host.textContent).toBe('Ada');
+    });
+
+    it('falls back to the default when handed something that is not a function', () => {
+        compile('<p>{{name}}</p>', {name: 'Ada'}, host, null);
+        expect(host.textContent).toBe('Ada');
+    });
+
+    it('uses the INJECTED renderer when there is one, and only that', () => {
+        // Domma's whole integration rests on this: pass a renderer and the
+        // default must not run at all.
+        const calls = [];
+        const stub = (tmpl, data) => { calls.push(tmpl); return `[${data.name}]`; };
+
+        compile('<p>{{name}}</p>', {name: 'Ada'}, host, stub);
+
+        expect(calls).toHaveLength(1);
+        expect(host.textContent).toBe('[Ada]');
+    });
+
+    it('drives blocks and each through the default renderer', () => {
+        const ctrl = compile(
+            '{{#if ok}}<b>{{name}}</b>{{/if}}<ul>{{#each xs}}<li>{{.}}</li>{{/each}}</ul>',
+            {ok: true, name: 'Ada', xs: ['a', 'b']},
+            host
+        );
+
+        expect(host.querySelector('b').textContent).toBe('Ada');
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['a', 'b']);
+
+        ctrl.updateAll({ok: false, name: 'Ada', xs: ['c']});
+        expect(host.querySelector('b')).toBeNull();
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['c']);
+    });
+});
+
+describe('template-compiler - expressions in {{ }}', () => {
+
+    let host;
+    beforeEach(() => {
+        host = document.createElement('div');
+        document.body.appendChild(host);
+    });
+
+    it('binds an expression interpolation, with the names it reads as deps', () => {
+        const {bindings} = annotate("<p>{{ n > 1 ? 'many' : 'one' }}</p>");
+        const text = bindings.find(b => b.kind === 'text');
+
+        expect(text).toBeDefined();
+        expect([...text.deps]).toEqual(['n']);
+        expect(text.prime).toBe(true);
+    });
+
+    it('keeps a plain path on the path route, with no AST and no priming', () => {
+        const {bindings} = annotate('<p>{{user.name}}</p>');
+        const text = bindings.find(b => b.kind === 'text');
+
+        expect(text.ast).toBeUndefined();
+        expect(text.prime).toBe(false);
+        expect([...text.deps]).toEqual(['user']);
+    });
+
+    it('is correct on first paint even when the renderer cannot evaluate it', () => {
+        // A renderer that only substitutes paths — which is what Domma's does —
+        // leaves an expression interpolation blank. `prime` is what fixes that,
+        // and this asserts the rendered text rather than the binding's state.
+        const pathsOnly = (tmpl, data) =>
+            tmpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => String(data[k] ?? ''));
+
+        const ctrl = compile("<p>{{ n > 1 ? 'many' : 'one' }}</p>", {n: 3}, host, pathsOnly);
+        expect(host.textContent).toBe('many');
+
+        ctrl.updateAll({n: 1});
+        expect(host.textContent).toBe('one');
+    });
+
+    it('leaves the renderer its own forms alone', () => {
+        // {{.}} and {{@index}} are renderer variables, and {{helper arg}} is
+        // Domma's helper syntax. None becomes a binding, and none warns.
+        for (const source of ['{{.}}', '{{@index}}', '{{upper name}}', '{{first-name}}']) {
+            const {bindings} = annotate(`<p>${source}</p>`);
+            expect(bindings.filter(b => b.kind === 'text'), source).toHaveLength(0);
+        }
+    });
+
+    it('warns once and binds nothing when an expression will not parse', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const {bindings} = annotate('<p>{{ a ==== b }}</p><p>{{ a ==== b }}</p>');
+
+        expect(bindings.filter(b => b.kind === 'text')).toHaveLength(0);
+        // One from the expression parser, one from the compiler naming the
+        // template — and neither repeated for the second occurrence.
+        expect(warn.mock.calls.filter(c => /is not bound/.test(c[0]))).toHaveLength(1);
+
+        warn.mockRestore();
+        clearExpressionCache();
+    });
+});
+
+describe('template-compiler - behaviour bindings share an element marker', () => {
+
+    it('lists several binding ids in one data-dm-b attribute', () => {
+        const {annotated, bindings} = annotate(
+            '<button data-on-click="a" data-on-blur="b" data-bind-text="c"></button>'
+        );
+
+        const marker = annotated.match(/data-dm-b="([^"]+)"/);
+        expect(marker).not.toBeNull();
+        expect(marker[1].split(' ')).toHaveLength(3);
+
+        for (const id of marker[1].split(' ')) {
+            expect(bindings.some(b => b.id === id), id).toBe(true);
+        }
+    });
+
+    it('carries both markers when an element has dynamic attributes too', () => {
+        const {annotated} = annotate('<b class="{{cls}}" data-model="q"></b>');
+
+        expect(annotated).toMatch(/data-dm-a="/);
+        expect(annotated).toMatch(/data-dm-b="/);
+    });
+
+    it('leaves block ids untouched by the arrival of data-if regions', () => {
+        // Domma renders these ids into its DOM. Renumbering them would be a
+        // silent change to every component's markup.
+        const {bindings} = annotate('{{#if a}}x{{/if}}<b data-if="c">y</b>{{#if d}}z{{/if}}');
+        const blocks = bindings.filter(b => b.kind === 'block').map(b => b.id);
+
+        expect(blocks).toEqual(['0_blk', '1_blk']);
+        expect(bindings.find(b => b.kind === 'if').id).toBe('2_if');
     });
 });

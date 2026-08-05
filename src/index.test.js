@@ -30,18 +30,25 @@ import {
     compileExpression,
     evaluateAst,
     evaluateExpression,
+    expressionDependencies,
     parseExpression,
     registerHelper,
     unregisterHelper
 } from './expression.js';
 import * as expression from './expression.js';
+import {createChildContext, createRootContext} from './context.js';
+import {registerBinding, unregisterBinding} from './handlers.js';
+import {render as renderTemplate} from './render.js';
 
 const SURFACE = [
     'Computation', 'Dep', 'DepMap', 'TemplateCompiler',
     'annotate', 'clearExpressionCache', 'compile', 'compileExpression', 'computed',
-    'effect', 'evaluateAst', 'evaluateExpression', 'flushSync', 'isEqual',
-    'observable', 'observableArray', 'parseExpression', 'registerHelper',
-    'scanBlocks', 'trackingProxy', 'unregisterHelper', 'untracked'
+    'createChildContext', 'createRootContext',
+    'effect', 'evaluateAst', 'evaluateExpression', 'expressionDependencies',
+    'flushSync', 'isEqual',
+    'observable', 'observableArray', 'parseExpression', 'registerBinding',
+    'registerHelper', 'renderTemplate',
+    'scanBlocks', 'trackingProxy', 'unregisterBinding', 'unregisterHelper', 'untracked'
 ];
 
 /**
@@ -101,6 +108,12 @@ describe('public API', () => {
         expect(api.registerHelper, 'registerHelper').toBe(registerHelper);
         expect(api.unregisterHelper, 'unregisterHelper').toBe(unregisterHelper);
         expect(api.clearExpressionCache, 'clearExpressionCache').toBe(clearExpressionCache);
+        expect(api.expressionDependencies, 'expressionDependencies').toBe(expressionDependencies);
+        expect(api.createRootContext, 'createRootContext').toBe(createRootContext);
+        expect(api.createChildContext, 'createChildContext').toBe(createChildContext);
+        expect(api.registerBinding, 'registerBinding').toBe(registerBinding);
+        expect(api.unregisterBinding, 'unregisterBinding').toBe(unregisterBinding);
+        expect(api.renderTemplate, 'renderTemplate').toBe(renderTemplate);
     });
 
     it('binds the TemplateCompiler namespace to the same functions it exports', () => {
@@ -144,6 +157,15 @@ describe('public API', () => {
         // it, and must not be published as though tuning it were supported.
         expect(expression.MAX_DEPTH, 'expression.js should still have MAX_DEPTH').toBe(64);
         expect(api, 'MAX_DEPTH should not be public').not.toHaveProperty('MAX_DEPTH');
+    });
+
+    it('withholds BLOCKED_KEYS, for the same reason', () => {
+        // It is exported from expression.js only so handlers.js can refuse to
+        // WRITE the same keys the evaluator refuses to read. Publishing it would
+        // read as an invitation to shorten the list.
+        expect([...expression.BLOCKED_KEYS].sort())
+            .toEqual(['__proto__', 'constructor', 'prototype']);
+        expect(api, 'BLOCKED_KEYS should not be public').not.toHaveProperty('BLOCKED_KEYS');
     });
 
     // ── Sufficiency for Domma ────────────────────────────────────────────────
@@ -208,9 +230,29 @@ describe('public API', () => {
         host.remove();
     });
 
+    it('compiles and renders with NO renderFn — the standalone case', () => {
+        // The gap M3 closes. Before it, this call threw "renderFn is not a
+        // function", so a consumer who ran `npm install domma-reactive` and
+        // nothing else could not render a template with the package's own
+        // template compiler. Four arguments used to be the minimum; three are.
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+
+        const ctrl = api.compile(
+            '<p>{{name}} has {{ n > 1 ? n : "one" }}</p>',
+            {name: 'Ada', n: 3},
+            host
+        );
+
+        expect(host.textContent).toBe('Ada has 3');
+
+        ctrl.updateAll({name: 'Grace', n: 1});
+        expect(host.textContent).toBe('Grace has one');
+
+        host.remove();
+    });
+
     it('drives an expression from an observable, through the surface alone', () => {
-        // M3 will wire this seam for real. Proving it composes now is what
-        // makes shipping the evaluator ahead of the binding layer honest.
         api.registerHelper('upper', (s) => String(s).toUpperCase());
 
         const count = api.observable(0);

@@ -64,9 +64,15 @@ const EXPECTED = [
     'evaluateAst',
     'evaluateExpression',
     'compileExpression',
+    'expressionDependencies',
     'registerHelper',
     'unregisterHelper',
-    'clearExpressionCache'
+    'clearExpressionCache',
+    'renderTemplate',
+    'registerBinding',
+    'unregisterBinding',
+    'createRootContext',
+    'createChildContext'
 ];
 
 /**
@@ -210,6 +216,62 @@ function checkExpression(api, label) {
     unregisterHelper('upper');
 }
 
+/**
+ * The renderer and the binding registry survived bundling.
+ *
+ * Neither can be checked by `assertCompiler` above, which is deliberately
+ * restricted to the string-only half of the compiler: `compile()` needs a
+ * `document` and none of these three routes has one. But the DEFAULT RENDERER
+ * is pure string work, and so is the registry's attribute-claiming, so both
+ * can be exercised here — and both are new enough surface that a bundler
+ * dropping one would otherwise show up first in a consumer's project.
+ *
+ * The renderer is what makes `compile()` work with no renderFn argument, which
+ * is the whole standalone story. If it is missing from a bundle, the package
+ * ships a binding compiler nobody can drive.
+ */
+function assertBindings(api, label) {
+    const {renderTemplate, registerBinding, unregisterBinding, expressionDependencies} = api;
+
+    assert(
+        renderTemplate('{{#if ok}}<b>{{name}}</b>{{else}}none{{/if}}', {ok: true, name: 'Ada'})
+        === '<b>Ada</b>',
+        `${label}: the default renderer did not render a block`
+    );
+    assert(
+        renderTemplate('{{#each xs}}{{.}}{{/each}}', {xs: [1, 2]}) === '12',
+        `${label}: the default renderer did not render {{#each}}`
+    );
+    assert(
+        renderTemplate('{{h}}', {h: '<b>'}) === '&lt;b&gt;',
+        `${label}: the default renderer stopped escaping`
+    );
+    assert(
+        renderTemplate("{{ n > 1 ? 'many' : 'one' }}", {n: 3}) === 'many',
+        `${label}: the default renderer lost its expression evaluation`
+    );
+
+    const deps = [...expressionDependencies('a.b + c')].sort();
+    assert(
+        deps.length === 2 && deps[0] === 'a' && deps[1] === 'c',
+        `${label}: expressionDependencies returned ${JSON.stringify(deps)}`
+    );
+
+    // registerBinding is the mechanism the built-ins use, so a working custom
+    // registration proves acceptance criterion 8 against the built artefact.
+    let updated = null;
+    registerBinding('dist-check', {
+        attribute: 'data-dist-check',
+        expression: true,
+        update({binding, context}) { updated = binding.evaluate(context); return true; }
+    });
+    assert(
+        typeof unregisterBinding === 'function' && unregisterBinding('dist-check'),
+        `${label}: registerBinding/unregisterBinding did not round-trip`
+    );
+    assert(updated === null, `${label}: the custom handler ran when nothing asked it to`);
+}
+
 /** observable → computed → effect → write → flushSync, for real. */
 function assertChain(api, label) {
     const {observable, computed, effect, flushSync} = api;
@@ -258,6 +320,7 @@ await check('require() through the exports map (CommonJS consumer)', () => {
     assertChain(api, 'require()');
     assertCompiler(api, 'require()');
     assertExpression(api, 'require()');
+    assertBindings(api, 'require()');
 });
 
 await check('import() through the exports map (ESM consumer)', async () => {
@@ -266,6 +329,7 @@ await check('import() through the exports map (ESM consumer)', async () => {
     assertChain(api, 'import()');
     assertCompiler(api, 'import()');
     assertExpression(api, 'import()');
+    assertBindings(api, 'import()');
 });
 
 await check('UMD bundle as a browser <script> (no module/exports in scope)', () => {
@@ -288,6 +352,7 @@ await check('UMD bundle as a browser <script> (no module/exports in scope)', () 
     assertChain(api, 'window.DommaReactive');
     assertCompiler(api, 'window.DommaReactive');
     assertExpression(api, 'window.DommaReactive');
+    assertBindings(api, 'window.DommaReactive');
 });
 
 await check('no dynamic code construction in any bundle (CSP: script-src \'self\')', () => {

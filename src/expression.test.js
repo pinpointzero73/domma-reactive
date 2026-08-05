@@ -32,6 +32,7 @@ import {
     compileExpression,
     evaluateAst,
     evaluateExpression,
+    expressionDependencies,
     parseExpression,
     registerHelper,
     unregisterHelper
@@ -1045,5 +1046,69 @@ describe('expression - no dynamic code construction', () => {
         // fire on them, or the guard above would be unfalsifiable noise.
         const sample = 'export function evaluateAst(ast) { return evaluateNode(ast); }';
         expect(FORBIDDEN.some(([pattern]) => pattern.test(sample))).toBe(false);
+    });
+});
+
+describe('expression - dependencies', () => {
+
+    const deps = (source) => [...expressionDependencies(source)].sort();
+
+    it('reports the root name of a path, not the whole path', () => {
+        // The graph tracks whole values, not paths within them (design spec §2
+        // puts deep tracking out of scope), so `user` is the honest answer.
+        expect(deps('user')).toEqual(['user']);
+        expect(deps('user.profile.email')).toEqual(['user']);
+    });
+
+    it('reports both sides of a computed index', () => {
+        expect(deps('items[i]')).toEqual(['i', 'items']);
+        expect(deps("items['fixed']")).toEqual(['items']);
+    });
+
+    it('collects from every branch of an operator, ternary or call', () => {
+        expect(deps('a && b')).toEqual(['a', 'b']);
+        expect(deps('a ? b : c')).toEqual(['a', 'b', 'c']);
+        expect(deps('upper(a, b.c)')).toEqual(['a', 'b']);
+        expect(deps('!(a + b * c)')).toEqual(['a', 'b', 'c']);
+    });
+
+    it('does not mistake a string literal for a name', () => {
+        // This is why the walk is over the AST and not over the source text.
+        expect(deps("label === 'name'")).toEqual(['label']);
+        expect(deps("'name'")).toEqual([]);
+        expect(deps('1 + 2')).toEqual([]);
+    });
+
+    it('does not report the helper being called', () => {
+        expect(deps('upper(name)')).toEqual(['name']);
+    });
+
+    it('unwraps $data and $root to the field underneath', () => {
+        expect(deps('$data.name')).toEqual(['name']);
+        expect(deps('$root.title')).toEqual(['title']);
+        expect(deps('$data.user.email')).toEqual(['user']);
+    });
+
+    it('reports nothing for $parent and $index, which are position', () => {
+        expect(deps('$parent.name')).toEqual([]);
+        expect(deps('$index')).toEqual([]);
+        expect(deps('$index > 0 ? a : b')).toEqual(['a', 'b']);
+    });
+
+    it('accepts an AST as well as a source string', () => {
+        const ast = parseExpression('a + b');
+        expect([...expressionDependencies(ast)].sort()).toEqual(['a', 'b']);
+    });
+
+    it('yields an empty set for anything that did not parse', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        expect(expressionDependencies('a ==== b').size).toBe(0);
+        expect(expressionDependencies(null).size).toBe(0);
+        expect(expressionDependencies(undefined).size).toBe(0);
+        warn.mockRestore();
+    });
+
+    it('de-duplicates a name read several times', () => {
+        expect(deps('a + a + a.b')).toEqual(['a']);
     });
 });

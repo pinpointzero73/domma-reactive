@@ -1,13 +1,16 @@
 /**
  * A minimal mustache renderer — TEST SUPPORT ONLY. Not exported by the package.
  *
- * `compile()` takes its renderer as a parameter, so this package deliberately
- * owns no template engine: it supplies the anchor and binding machinery, and
- * the consumer supplies the evaluation. Domma injects `utils.render`.
+ * `compile()` takes its renderer as an OPTIONAL parameter. The package now has
+ * a default of its own (render.js), but the parameter is the contract Domma
+ * relies on — it injects `utils.render` — so the compiler's tests must exercise
+ * the INJECTED path, not the default. That is what this file is for.
  *
- * The compiler's own tests still need *some* renderer, and importing Domma's
- * would invert the dependency — the package's suite would rest on its consumer.
- * So this stands in. It implements only the subset the compiler exercises:
+ * Importing Domma's renderer would invert the dependency: the package's suite
+ * would rest on its consumer. So this stands in, deliberately smaller than
+ * render.js so that a test passing here proves the compiler needs nothing more
+ * than the documented `(template, data) => string`. It implements only the
+ * subset the compiler exercises:
  *
  *   {{x}} / {{x.y}}   interpolation, HTML-escaped
  *   {{{x}}}           triple-stache, raw

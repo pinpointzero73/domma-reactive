@@ -58,6 +58,8 @@
  * mutating it would corrupt the others.
  */
 
+import {CONTEXT_KEYS, toContext} from './context.js';
+
 const PREFIX = '[Domma Reactive]';
 
 /**
@@ -94,11 +96,14 @@ const CACHE_LIMIT = 1000;
  * execution by another name. `prototype` completes the pair. Reading any of
  * them is the first move in every prototype-pollution chain, and no legitimate
  * template expression needs any of them.
+ *
+ * Exported — though deliberately NOT re-exported from index.js — because the
+ * binding layer must refuse to *write* them too, and `data-model="x.__proto__"`
+ * is prototype pollution with the arrow pointing the other way. One list, one
+ * place to audit; two lists would drift and the write side would be the one
+ * left behind.
  */
-const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/** Context variables, resolved from the binding context rather than the data. */
-const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index']);
+export const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * Words that are valid identifiers to the tokeniser but must not open an
@@ -619,24 +624,6 @@ function readMember(object, key) {
 }
 
 /**
- * Normalise whatever the caller passed as a context.
- *
- * A binding context (design spec §5) carries `$data`, `$root`, `$parent` and
- * `$index`. Outside a list or `with` block there is no such object yet — the
- * caller has plain data — so a plain object is promoted to a root context: it
- * IS `$data` and `$root`, with no parent and no index. The spec requires those
- * four names to resolve everywhere, not only inside a block, and this is how
- * that promise is kept before context.js exists to make them.
- *
- * Detection is by the presence of `$data`, which is the one field every context
- * has and no plain data object sensibly does.
- */
-function normaliseContext(context) {
-    if (context !== null && typeof context === 'object' && '$data' in context) return context;
-    return {$data: context, $root: context, $parent: null, $index: null};
-}
-
-/**
  * Resolve a bare name.
  *
  * The four context variables come from the context. Everything else is a
@@ -810,7 +797,10 @@ export function evaluateAst(ast, context) {
     if (ast === null || typeof ast !== 'object' || typeof ast.type !== 'string') return undefined;
 
     try {
-        return evaluateNode(ast, normaliseContext(context), 0);
+        // `toContext` is what keeps §5's promise that $data/$root/$parent/$index
+        // resolve outside a block as well as inside one: plain data handed in
+        // here is promoted to a root context before the walk begins.
+        return evaluateNode(ast, toContext(context), 0);
     } catch (err) {
         const source = sources.get(ast);
         console.warn(
@@ -859,6 +849,65 @@ export function compileExpression(source, options = {}) {
  */
 export function evaluateExpression(source, context, options = {}) {
     return evaluateAst(parseExpression(source, options), context);
+}
+
+/**
+ * Which top-level names an expression reads.
+ *
+ * The binding layer wires one reactive effect per binding, and an effect needs
+ * to know what to subscribe to. Computing that from the AST rather than from the
+ * source text is the whole reason this lives here: a regular expression over
+ * `{{ }}` cannot tell a property from a string literal, and would happily
+ * report `'name'` as a dependency of `label === 'name'`.
+ *
+ * ROOT names only, deliberately. `user.email` yields `user`, not `user.email`,
+ * because the package tracks whole values and not paths within them (design
+ * spec §2, "deep/nested tracking" is out of scope). A consumer subscribing to
+ * `user` re-runs when the object is replaced, which is the granularity the
+ * graph actually offers.
+ *
+ * Two special cases earn their code:
+ *
+ *   $data.x / $root.x   yield `x`. In M3 those are the same object as the data,
+ *                       so the dependency is the field, not the context name.
+ *   $parent, $index     yield nothing. They are facts about position, owned by
+ *                       whoever created the child context, and they do not
+ *                       change without that context being rebuilt.
+ *
+ * Helper names are not dependencies either: `upper(name)` depends on `name`.
+ * A helper is code, and code does not change under you.
+ *
+ * @param {string|Object|null} source an expression source, or an AST
+ * @param {Object} [options] as parseExpression, when a source string is given
+ * @returns {Set<string>} empty when the source did not parse
+ */
+export function expressionDependencies(source, options = {}) {
+    const ast = typeof source === 'string' ? parseExpression(source, options) : source;
+    const deps = new Set();
+    if (ast === null || typeof ast !== 'object') return deps;
+
+    const stack = [ast];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (current === null || typeof current !== 'object') continue;
+
+        if (current.type === 'Identifier') {
+            if (!CONTEXT_KEYS.has(current.name)) deps.add(current.name);
+            continue;
+        }
+
+        if (current.type === 'Member'
+            && !current.computed
+            && current.object?.type === 'Identifier'
+            && (current.object.name === '$data' || current.object.name === '$root')) {
+            deps.add(current.property);
+            continue;
+        }
+
+        for (const child of childrenOf(current)) stack.push(child);
+    }
+
+    return deps;
 }
 
 /**
