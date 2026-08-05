@@ -655,7 +655,7 @@ source of truth for the markup.
 <div id="app">
     <h1 data-bind-text="title">Rendered by the server</h1>
     <button data-on-click="save">Save</button>
-    <input data-model="query" value="rendered by the server">
+    <input data-model="query.value" value="rendered by the server">
     <p data-if="showHelp">Help text.</p>
     <ul data-each="rows key=id">
         <li data-bind-text="name">template row</li>
@@ -677,6 +677,10 @@ const handle = applyBindings({
 
 Every binding gets its own effect, so a view model built from observables updates itself. For a plain, untracked object,
 `handle.update(data)` re-runs everything.
+
+Note `data-model="query.value"`, not `data-model="query"` — `query` holds an observable, and the
+[no-unwrapping rule](#data-model) applies in a binding exactly as it does in JavaScript. Binding the bare name would
+show `[object Object]` in the input and replace the observable on the first keystroke.
 
 | | |
 |---|---|

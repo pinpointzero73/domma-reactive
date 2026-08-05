@@ -317,6 +317,54 @@ describe('{{ }} in already-rendered DOM', () => {
         warn.mockRestore();
     });
 
+    // The documented exception. A data-each body is a TEMPLATE — lifted out,
+    // compiled and cloned per item — so mustache there is substituted and the
+    // warning was telling the author to replace working markup.
+    it('says nothing about mustache inside a data-each item template', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<ul data-each="rows key=id"><li>{{name}}</li></ul>');
+
+        const handle = applyBindings({rows: [{id: 1, name: 'Ada'}]}, host);
+
+        expect(host.querySelector('li').textContent).toBe('Ada');
+        expect(warn).not.toHaveBeenCalled();
+
+        handle.dispose();
+        warn.mockRestore();
+    });
+
+    it('still warns about mustache outside the list, alongside one', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<div><p>Hello {{name}}</p><ul data-each="rows key=id"><li>{{name}}</li></ul></div>');
+
+        const handle = applyBindings({name: 'Ada', rows: [{id: 1, name: 'Grace'}]}, host);
+
+        const messages = warn.mock.calls.flat().join('\n');
+        expect(messages).toMatch(/does not interpolate/);
+        // Named the token that is genuinely stranded, not the one in the list.
+        expect(messages).toMatch(/Hello \{\{name\}\}/);
+
+        handle.dispose();
+        warn.mockRestore();
+    });
+
+    it('says nothing when the root itself is the list', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        host.setAttribute('data-each', 'rows key=id');
+        serve('<li>{{name}}</li>');
+
+        // Cleanup in `finally`: a failing expect() would otherwise leave
+        // data-each on the shared host and take the next test down with it.
+        try {
+            const handle = applyBindings({rows: [{id: 1, name: 'Ada'}]}, host);
+            expect(warn).not.toHaveBeenCalled();
+            handle.dispose();
+        } finally {
+            host.removeAttribute('data-each');
+            warn.mockRestore();
+        }
+    });
+
     it('says nothing about prose that merely contains braces', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         serve('<p>Use {{ }} for interpolation, or { a: 1 } for an object.</p>');

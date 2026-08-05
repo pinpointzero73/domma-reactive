@@ -492,6 +492,32 @@ export function applyBindings(data, rootElement, options = {}) {
 }
 
 /**
+ * Is this node inside a list's item template?
+ *
+ * A `data-each` element's contents are the one place mustache DOES mean
+ * something here: they are lifted out of the document, compiled and cloned per
+ * item, exactly as `compile()` would. Warning about them told the author to
+ * replace working markup with `data-bind-text`, which is the opposite of the
+ * advice — so the check has to stop at a list boundary rather than walk through
+ * it.
+ *
+ * The walk stops AT `root`, inclusive — a root that is itself a list holds
+ * nothing but an item template — and goes no further: a `data-each` ancestor
+ * above the root is somebody else's list and not ours to reason about.
+ *
+ * @param {Node}    node
+ * @param {Element} root
+ * @returns {boolean}
+ */
+function insideListTemplate(node, root) {
+    for (let el = node.parentNode; el; el = el.parentNode) {
+        if (el.nodeType === 1 && el.hasAttribute(EACH_ATTRIBUTE)) return true;
+        if (el === root) return false;
+    }
+    return false;
+}
+
+/**
  * Say once if the subtree contains mustache that nothing will ever substitute.
  *
  * Only tokens that look like a binding count: `{{ name }}`, `{{user.email}}`.
@@ -507,6 +533,7 @@ function checkForInterpolation(root, label) {
     let node;
     while ((node = walker.nextNode())) {
         if (!LOOKS_INTERPOLATED.test(node.data)) continue;
+        if (insideListTemplate(node, root)) continue;
 
         warnOnce(
             `interp:${label}`,
