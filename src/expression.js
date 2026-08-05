@@ -135,8 +135,18 @@ class ExpressionError extends Error {}
 /** name → function. The only things an expression may call. */
 const helpers = new Map();
 
-/** source → AST | null (null meaning "this source failed to parse"). */
+/**
+ * source → AST | null (null meaning "this source failed to parse").
+ *
+ * TWO caches, because the same text parses differently depending on whether the
+ * caller allows method calls: `a.b()` is a MethodCall for an event binding and a
+ * parse failure for an interpolation. Keyed by text alone, whichever call
+ * arrived first would decide for the other — an interpolation elsewhere on the
+ * page could silently break an event handler, or worse, let a method call into
+ * an expression that is supposed to refuse one.
+ */
 const cache = new Map();
+const methodCallCache = new Map();
 
 /**
  * AST root → the source it was parsed from, for evaluation-time warnings.
@@ -363,7 +373,7 @@ const node = (props) => Object.freeze(props);
  * @returns {Object} the root node
  * @throws {ExpressionError}
  */
-function parseSource(source) {
+function parseSource(source, allowMethodCalls = false) {
     const tokens = tokenise(source);
     let i = 0;
     let nest = 0;
@@ -487,13 +497,18 @@ function parseSource(source) {
             return node({type: 'Member', object: left, property, computed: true});
         }
 
-        // A call. The callee must be a bare name, which is then looked up in
-        // the helper registry and nowhere else — see evaluateCall. Rejecting
-        // `x.foo()` HERE rather than at evaluation is deliberate: it is a
-        // grammatical fact, not a data-dependent one, so the author gets told
-        // at compile time instead of on whichever render first reaches it.
+        // A call. Ordinarily the callee must be a bare name, which is then
+        // looked up in the helper registry and nowhere else — see evaluateCall.
+        // Rejecting `x.foo()` HERE rather than at evaluation is deliberate: it
+        // is a grammatical fact, not a data-dependent one, so the author gets
+        // told at compile time instead of on whichever render first reaches it.
+        //
+        // `allowMethodCalls` is the one exception, and only an event binding
+        // sets it. See the MethodCall note in evaluateNode for why the evaluator
+        // still refuses to perform one even after the parser has accepted it.
         expect('(');
-        if (left.type !== 'Identifier') {
+        const method = allowMethodCalls && left.type === 'Member';
+        if (left.type !== 'Identifier' && !method) {
             fail('only registered helpers can be called — `x.foo()` is not supported');
         }
 
@@ -504,6 +519,16 @@ function parseSource(source) {
             } while (eat(','));
         }
         expect(')');
+
+        if (method) {
+            return node({
+                type: 'MethodCall',
+                object: left.object,
+                property: left.property,
+                computed: left.computed,
+                args: Object.freeze(args)
+            });
+        }
 
         return node({type: 'Call', callee: left.name, args: Object.freeze(args)});
     }
@@ -572,6 +597,10 @@ function childrenOf(current) {
             return [current.test, current.consequent, current.alternate];
         case 'Call':
             return current.args;
+        case 'MethodCall':
+            return current.computed
+                ? [current.object, current.property, ...current.args]
+                : [current.object, ...current.args];
         default:
             return [];
     }
@@ -581,6 +610,11 @@ function childrenOf(current) {
 
 /**
  * Read one property, and the only place in this module that does.
+ *
+ * Exported within the package because the event binding must resolve a method
+ * off its receiver, and doing that anywhere else would mean a second read path
+ * with a second copy of the prototype guard — which is exactly how a guard ends
+ * up applied in one place and forgotten in the other.
  *
  * ── Why the prototype guard lives here, and not in the parser ────────────────
  *
@@ -608,7 +642,7 @@ function childrenOf(current) {
  * @param {*} key
  * @returns {*}
  */
-function readMember(object, key) {
+export function readMember(object, key) {
     if (object === null || object === undefined) return undefined;
 
     const name = String(key);
@@ -736,6 +770,19 @@ function evaluateNode(current, context, depth) {
                 current.args.map((arg) => evaluateNode(arg, context, depth + 1))
             );
 
+        // Parsed, but never performed here. The parser accepts `x.foo()` when
+        // the caller opts in, which lets the EVENT binding resolve and invoke it
+        // at dispatch time; an expression is a read that runs inside an effect,
+        // and invoking a method during a read is a side effect where the whole
+        // design promises none. So the node reaches this walker only if it was
+        // put somewhere it does not belong, and the honest answer is to refuse
+        // and say so rather than quietly yield undefined.
+        case 'MethodCall':
+            throw new ExpressionError(
+                'an expression cannot call a method — `x.foo()` is available to ' +
+                'data-on-* handlers only, because a call during a render is a side effect'
+            );
+
         default:
             throw new ExpressionError(`unknown node type "${current.type}"`);
     }
@@ -755,16 +802,21 @@ function evaluateNode(current, context, depth) {
  * @param {string} source
  * @param {Object} [options]
  * @param {string} [options.template] Name of the template, for the warning.
+ * @param {boolean} [options.methodCalls] Permit `x.foo()`, producing a MethodCall
+ *        node the evaluator will still refuse to perform. Only the event binding
+ *        sets this; see parsePostfix.
  * @returns {Object|null} a frozen AST, or null if the source did not parse
  */
 export function parseExpression(source, options = {}) {
     const key = typeof source === 'string' ? source : String(source ?? '');
+    const methodCalls = options.methodCalls === true;
+    const store = methodCalls ? methodCallCache : cache;
 
-    if (cache.has(key)) return cache.get(key);
+    if (store.has(key)) return store.get(key);
 
     let ast = null;
     try {
-        ast = parseSource(key);
+        ast = parseSource(key, methodCalls);
         sources.set(ast, key);
     } catch (err) {
         const where = options.template ? ` in template "${options.template}"` : '';
@@ -776,8 +828,8 @@ export function parseExpression(source, options = {}) {
     }
 
     // Bounded: see CACHE_LIMIT.
-    if (cache.size >= CACHE_LIMIT) cache.clear();
-    cache.set(key, ast);
+    if (store.size >= CACHE_LIMIT) store.clear();
+    store.set(key, ast);
 
     return ast;
 }
@@ -961,8 +1013,9 @@ export function unregisterHelper(name) {
  * @returns {number} entries dropped
  */
 export function clearExpressionCache() {
-    const size = cache.size;
+    const size = cache.size + methodCallCache.size;
     cache.clear();
+    methodCallCache.clear();
     return size;
 }
 

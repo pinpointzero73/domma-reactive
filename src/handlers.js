@@ -62,7 +62,7 @@
  * an empty box until the user types.
  */
 
-import {BLOCKED_KEYS, evaluateAst} from './expression.js';
+import {BLOCKED_KEYS, evaluateAst, readMember} from './expression.js';
 import {CONTEXT_KEYS} from './context.js';
 import {truthy} from './render.js';
 
@@ -344,18 +344,45 @@ const listeners = new WeakMap();
  * or a call, in which case the arguments are evaluated at dispatch time and the
  * event is appended:
  *
- *     data-on-click="save(item, 2)"   save.call($data, item, 2, event)
+ *     data-on-click="save(item, 2)"      save.call($data, item, 2, event)
+ *     data-on-click="$parent.remove($data)"   remove.call($parent, item, event)
  *
  * The rule is "your arguments, then the event", which means a handler that
  * wants only the event and a handler that wants arguments are spelled the same
- * way round. `this` is `$data`.
+ * way round.
  *
- * The call form does NOT go through the evaluator's helper registry. The parser
- * produces a `Call` node whose callee is a bare name, and this handler resolves
- * that name against the binding context instead — because an event handler is a
- * method on your data, not a pure helper, and the evaluator is right to refuse
- * to call one during a render. Arguments are evaluated by the ordinary
- * evaluator, so they obey every rule it does.
+ * ── Why a method call is allowed here and nowhere else ───────────────────────
+ *
+ * Inside a list `$data` is the ITEM, and a bare name resolves against `$data`
+ * and nowhere else — the evaluator deliberately does not walk up to `$parent`,
+ * because a name that silently resolves one level up is a name whose meaning
+ * depends on data you are not looking at. That leaves `$parent.remove($data)`
+ * as the only way for a row to reach the list that owns it, and until the event
+ * binding could parse it, a row's delete button was unspellable.
+ *
+ * So this handler sets `methodCalls`, and it is the only one that does. An
+ * interpolation, a `data-if` and a `data-bind-*` are READS that run inside an
+ * effect; calling a method during one is a side effect where the design promises
+ * none, and the evaluator still throws on a MethodCall node for exactly that
+ * reason. An event fires on a gesture, outside every effect, and calling a
+ * method on your view model is the whole point of it.
+ *
+ * Neither call form goes through the evaluator's helper registry — the callee is
+ * resolved against the binding context instead, because an event handler is a
+ * method on your data, not a pure helper. Arguments are evaluated by the
+ * ordinary evaluator, so they obey every rule it does, and the method name is
+ * read through the same `readMember` the evaluator uses, so `$data.constructor()`
+ * is shut by the same blocklist that shuts `{{ $data.constructor }}`.
+ *
+ * ── What `this` is ───────────────────────────────────────────────────────────
+ *
+ *     save                 $data     a reference; the receiver is not named
+ *     save(x)              $data     a bare callee is a name on $data
+ *     handlers.save        $data     STILL a reference — nothing is called here
+ *     handlers.save()      handlers  a method call keeps its receiver
+ *
+ * The last two look inconsistent and are not: they are what `const f = o.m; f()`
+ * and `o.m()` do in the language the author already knows.
  *
  * Returning `false` calls preventDefault(), the jQuery idiom Domma users
  * already have in their fingers.
@@ -369,6 +396,7 @@ const listeners = new WeakMap();
 const eventHandler = {
     attributePrefix: 'data-on-',
     expression: true,
+    methodCalls: true,
     tracks: false,
 
     update() {
@@ -401,8 +429,17 @@ function dispatchEvent(binding, event, context) {
 
     let fn;
     let args;
+    let self = context.$data;
 
-    if (ast.type === 'Call') {
+    if (ast.type === 'MethodCall') {
+        // The receiver is evaluated once and kept, because it is both the thing
+        // the method is read from and the `this` it runs with — resolving it
+        // twice would let a getter disagree with itself between the two.
+        self = evaluateAst(ast.object, context);
+        const key = ast.computed ? evaluateAst(ast.property, context) : ast.property;
+        fn = readMember(self, key);
+        args = ast.args.map((arg) => evaluateAst(arg, context));
+    } else if (ast.type === 'Call') {
         fn = evaluateAst({type: 'Identifier', name: ast.callee}, context);
         args = ast.args.map((arg) => evaluateAst(arg, context));
     } else {
@@ -419,7 +456,7 @@ function dispatchEvent(binding, event, context) {
         return;
     }
 
-    if (fn.call(context.$data, ...args, event) === false) event.preventDefault();
+    if (fn.call(self, ...args, event) === false) event.preventDefault();
 }
 
 // ── data-bind-* ───────────────────────────────────────────────────────────────

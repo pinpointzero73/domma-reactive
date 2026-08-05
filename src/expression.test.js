@@ -1112,3 +1112,109 @@ describe('expression - dependencies', () => {
         expect(deps('a + a + a.b')).toEqual(['a']);
     });
 });
+
+// ── Method calls, opted into ──────────────────────────────────────────────────
+//
+// `x.foo()` is refused by default and always will be: an interpolation, a
+// `data-if` and a `data-bind-*` are READS that run inside an effect, and a read
+// that invokes a method on your data is a side effect in a place that promises
+// not to have one.
+//
+// An event handler is not a read. It fires on a gesture, outside every effect,
+// and calling a method on your view model is the entire point — `$parent.remove
+// ($data)` is how a row reaches the list that owns it, and there is no other way
+// to spell it, because a bare name resolves against $data and $data is the row.
+//
+// So the restriction is not lifted, it is SCOPED: the parser accepts a method
+// call only when the caller asks for it, and the evaluator still refuses to
+// perform one. Only the event binding asks.
+
+describe('method calls are refused by default', () => {
+    it('does not parse x.foo(), and says why', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        expect(parseExpression('a.b()')).toBeNull();
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('only registered helpers can be called')
+        );
+        warn.mockRestore();
+    });
+
+    it('refuses a computed callee too', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        expect(parseExpression('a["b"]()')).toBeNull();
+        warn.mockRestore();
+    });
+});
+
+describe('method calls, when the caller opts in', () => {
+    it('parses x.foo(a) into a MethodCall', () => {
+        const ast = parseExpression('$parent.remove($data)', {methodCalls: true});
+        expect(ast).toMatchObject({
+            type: 'MethodCall',
+            computed: false,
+            property: 'remove',
+            object: {type: 'Identifier', name: '$parent'}
+        });
+        expect(ast.args).toHaveLength(1);
+        expect(ast.args[0]).toMatchObject({type: 'Identifier', name: '$data'});
+    });
+
+    it('parses a computed callee', () => {
+        const ast = parseExpression('handlers["save"]()', {methodCalls: true});
+        expect(ast).toMatchObject({type: 'MethodCall', computed: true});
+        expect(ast.property).toMatchObject({type: 'Literal', value: 'save'});
+    });
+
+    it('still parses a bare helper call as a plain Call', () => {
+        const ast = parseExpression('upper(a)', {methodCalls: true});
+        expect(ast).toMatchObject({type: 'Call', callee: 'upper'});
+    });
+
+    it('does not let one parse poison the other through the cache', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        // Strict first, permissive second — the permissive caller must not get
+        // the cached null, or an event binding would break because some earlier
+        // interpolation happened to use the same text.
+        expect(parseExpression('a.b()')).toBeNull();
+        expect(parseExpression('a.b()', {methodCalls: true})).toMatchObject({type: 'MethodCall'});
+
+        clearExpressionCache();
+
+        // …and the other way round, or a permissive parse would let a method
+        // call leak into an ordinary expression.
+        expect(parseExpression('a.b()', {methodCalls: true})).toMatchObject({type: 'MethodCall'});
+        expect(parseExpression('a.b()')).toBeNull();
+
+        warn.mockRestore();
+    });
+
+    it('counts a method call towards the depth limit', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const deep = 'a.b(' .repeat(MAX_DEPTH + 2) + '1' + ')'.repeat(MAX_DEPTH + 2);
+        expect(parseExpression(deep, {methodCalls: true})).toBeNull();
+        warn.mockRestore();
+    });
+});
+
+describe('the evaluator still will not perform a method call', () => {
+    it('warns and yields undefined rather than invoking it', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const ast = parseExpression('obj.hit()', {methodCalls: true});
+
+        let called = false;
+        expect(evaluateAst(ast, {obj: {hit: () => { called = true; return 1; }}})).toBeUndefined();
+        expect(called).toBe(false);
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('threw during evaluation'),
+            expect.objectContaining({message: expect.stringContaining('cannot call a method')})
+        );
+
+        warn.mockRestore();
+    });
+
+    it('reports the method call as a dependency of its receiver', () => {
+        const ast = parseExpression('list.remove(item)', {methodCalls: true});
+        expect([...expressionDependencies(ast)].sort()).toEqual(['item', 'list']);
+    });
+});

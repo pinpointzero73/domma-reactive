@@ -984,3 +984,190 @@ describe('the settle loop converges', () => {
         warn.mockRestore();
     });
 });
+
+// ── data-on-* method calls ────────────────────────────────────────────────────
+//
+// The gap this closes: inside a list, `$data` is the ITEM, and a bare name
+// resolves against $data and nowhere else (expression.js deliberately does not
+// walk up to $parent). So a row's delete button had no way to name the list that
+// owns it — `$parent.remove($data)` is the only spelling, and it did not parse.
+//
+// It parses now, for event bindings only. Everything else still refuses.
+
+describe('data-on-* can call a method on the data', () => {
+    it('reaches the owning view model from inside a list', () => {
+        const removed = [];
+        const data = {
+            items: [{id: 1}, {id: 2}],
+            remove(item) { removed.push(item.id); }
+        };
+        compile(
+            '{{#each items key=id}}<button data-on-click="$parent.remove($data)"></button>{{/each}}',
+            data,
+            host
+        );
+
+        fire(host.querySelectorAll('button')[1], 'click');
+        expect(removed).toEqual([2]);
+    });
+
+    it('binds `this` to the receiver, exactly as JavaScript does', () => {
+        // `handlers.save()` keeps its receiver; a bare reference `handlers.save`
+        // does not, and is documented as running with `this` = $data. That is
+        // not an inconsistency to apologise for — it is precisely what
+        // `const f = o.m; f()` does in the language the author already knows.
+        let self = null;
+        const handlers = {save() { self = this; }};
+        compile('<button data-on-click="handlers.save()"></button>', {handlers}, host);
+
+        fire(host.querySelector('button'), 'click');
+        expect(self).toBe(handlers);
+    });
+
+    it('passes declared arguments first and the event last', () => {
+        let args = null;
+        const data = {api: {go: (...a) => { args = a; }}, n: 7};
+        compile('<button data-on-click="api.go(n, 2)"></button>', data, host);
+
+        fire(host.querySelector('button'), 'click');
+        expect(args.slice(0, 2)).toEqual([7, 2]);
+        expect(args[2].type).toBe('click');
+    });
+
+    it('honours a computed method name', () => {
+        let called = false;
+        const data = {api: {save: () => { called = true; }}, which: 'save'};
+        compile('<button data-on-click="api[which]()"></button>', data, host);
+
+        fire(host.querySelector('button'), 'click');
+        expect(called).toBe(true);
+    });
+
+    it('returning false still prevents the default', () => {
+        const data = {api: {stop: () => false}};
+        compile('<a href="#" data-on-click="api.stop()">x</a>', data, host);
+
+        const event = new window.Event('click', {bubbles: true, cancelable: true});
+        host.querySelector('a').dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('will not call through a prototype-chain key', () => {
+        // `$data.constructor()` is the route from "call a method on my data" to
+        // "call the Object constructor", and it is shut with the same blocklist
+        // the reader uses.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<button data-on-click="$data.constructor()"></button>', {}, host);
+
+        expect(() => fire(host.querySelector('button'), 'click')).not.toThrow();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('__proto__, constructor'));
+        warn.mockRestore();
+    });
+
+    it('warns once when the method is not a function', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<button data-on-click="api.nope()"></button>', {api: {nope: 42}}, host);
+
+        fire(host.querySelector('button'), 'click');
+        fire(host.querySelector('button'), 'click');
+
+        const hits = warn.mock.calls.filter(([m]) => String(m).includes('did not resolve to a function'));
+        expect(hits).toHaveLength(1);
+        warn.mockRestore();
+    });
+
+    it('does nothing when the receiver is absent, rather than throwing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<button data-on-click="missing.go()"></button>', {}, host);
+
+        expect(() => fire(host.querySelector('button'), 'click')).not.toThrow();
+        warn.mockRestore();
+    });
+});
+
+describe('every OTHER binding still refuses a method call', () => {
+    it('skips data-bind-text rather than calling it', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        let called = false;
+        compile('<b data-bind-text="api.name()"></b>', {api: {name: () => { called = true; return 'x'; }}}, host);
+
+        expect(called).toBe(false);
+        expect(host.querySelector('b').textContent).toBe('');
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('only registered helpers can be called')
+        );
+        warn.mockRestore();
+    });
+
+    it('skips data-if rather than calling it', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        let called = false;
+        compile('<b data-if="api.ok()">shown</b>', {api: {ok: () => { called = true; return true; }}}, host);
+
+        expect(called).toBe(false);
+        warn.mockRestore();
+    });
+});
+
+// ── Entities in an expression-valued attribute ────────────────────────────────
+//
+// An HTML attribute value is entity-encoded text: `data-bind-class="a &amp;&amp;
+// b"` and `data-bind-class="a && b"` are the SAME attribute, and every browser
+// hands both to getAttribute() as `a && b`. The compiler reads its attributes
+// out of a template STRING, so it has to do that decoding itself — otherwise the
+// two spellings behave differently, which is the one thing HTML says they cannot.
+//
+// This is not a corner case reached by writing `&amp;` on purpose. Serialising
+// DOM back to HTML (`el.innerHTML`, which is how applyBindings captures a
+// data-each body) escapes every `&` it emits, so a perfectly ordinary
+// `data-bind-class="done && 'struck'"` — the documented idiom — comes back out
+// as `&amp;&amp;` without anyone having typed an entity anywhere.
+
+describe('an expression attribute is decoded like the HTML it is', () => {
+    it('reads &amp;&amp; as &&', () => {
+        compile(`<b data-bind-text="a &amp;&amp; b"></b>`, {a: 1, b: 'yes'}, host);
+        expect(host.querySelector('b').textContent).toBe('yes');
+    });
+
+    it('reads &lt; and &gt; as < and >', () => {
+        compile(`<b data-bind-text="n &lt; 5"></b>`, {n: 2}, host);
+        expect(host.querySelector('b').textContent).toBe('true');
+    });
+
+    it('decodes in a region attribute too', () => {
+        // Asserted on the FALSY case: a data-if whose expression fails to parse
+        // is skipped, which leaves the body on the page — so "it is shown when
+        // true" would pass whether the decoding worked or not.
+        compile(`<b data-if="a &amp;&amp; b">shown</b>`, {a: 1, b: 0}, host);
+        expect(host.textContent).not.toContain('shown');
+
+        const other = document.createElement('div');
+        compile(`<b data-if="a &amp;&amp; b">shown</b>`, {a: 1, b: 1}, other);
+        expect(other.textContent).toContain('shown');
+    });
+
+    it('decodes in an event attribute', () => {
+        let got = null;
+        compile(
+            `<button data-on-click="go(a &amp;&amp; b)"></button>`,
+            {a: 1, b: 'x', go: (v) => { got = v; }},
+            host
+        );
+        fire(host.querySelector('button'), 'click');
+        expect(got).toBe('x');
+    });
+
+    it('decodes &amp; last, so &amp;lt; stays the text "&lt;"', () => {
+        // Decoding in the wrong order turns the escaped form of an entity into
+        // the entity itself — the classic double-decode.
+        compile(`<b data-bind-text="'&amp;lt;'"></b>`, {}, host);
+        expect(host.querySelector('b').textContent).toBe('&lt;');
+    });
+
+    it('leaves an ORDINARY attribute encoded, because it is markup', () => {
+        // `href` is not an expression; its value is written back into the
+        // annotated template and must stay valid HTML.
+        compile(`<a href="/s?a=1&amp;b=2">{{x}}</a>`, {x: 'go'}, host);
+        expect(host.querySelector('a').getAttribute('href')).toBe('/s?a=1&b=2');
+    });
+});

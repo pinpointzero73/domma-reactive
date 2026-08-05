@@ -94,6 +94,45 @@ const ATTR = /([\w:@.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 /** A path we can resolve against the data object (excludes helper expressions) */
 const SIMPLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/;
 
+/**
+ * The entities a serialiser can put into an attribute value, and their text.
+ *
+ * `&amp;` is in the same alternation as the rest rather than applied afterwards,
+ * because ONE pass is what makes the order safe: scanning left to right, the
+ * `&amp;` in `&amp;lt;` is consumed and the scan resumes after it, so the
+ * remaining `lt;` is plain text and the result is the literal `&lt;`. Decoding
+ * in two passes — entities, then `&amp;` — would turn it into `<`, which is the
+ * classic double-decode and a real bug in a template compiler.
+ */
+const ENTITY = /&(?:lt|gt|quot|apos|nbsp|amp|#39|#x27);/g;
+const ENTITY_TEXT = {
+    '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'",
+    '&#39;': "'", '&#x27;': "'", '&nbsp;': ' ', '&amp;': '&'
+};
+
+/**
+ * An attribute value, as the DOM would have given it to getAttribute().
+ *
+ * An HTML attribute value is entity-encoded text, so `data-bind-class="a &amp;&amp;
+ * b"` and `data-bind-class="a && b"` are the same attribute and a browser hands
+ * both to getAttribute() as `a && b`. This compiler reads attributes out of a
+ * STRING and so has to do that decoding itself; without it the two spellings
+ * behave differently, which is the one thing HTML says they cannot.
+ *
+ * It is not a corner case reached only by typing an entity on purpose.
+ * Serialising DOM back to HTML escapes every `&` it writes, and `el.innerHTML`
+ * is exactly how applyBindings captures a `data-each` body — so an ordinary
+ * `data-bind-class="done && 'struck'"`, the documented idiom, came back out as
+ * `&amp;&amp;` and failed to parse, with no entity anywhere in the author's page.
+ *
+ * Applied ONLY to values that are parsed as expressions. An ordinary attribute's
+ * value is written back into the annotated template, where `&amp;` is correct
+ * markup and `&quot;` inside a double-quoted value is load-bearing.
+ */
+function decodeAttribute(value) {
+    return value.includes('&') ? value.replace(ENTITY, (m) => ENTITY_TEXT[m]) : value;
+}
+
 /*
  * EXPRESSION_HINT comes from render.js so that the compiler and the default
  * renderer answer "is this an expression or a key?" identically. The compiler
@@ -330,7 +369,7 @@ function scanRegionElements(template) {
                 end: range[1],
                 kind: claim.kind,
                 arg: claim.arg,
-                expr: (a[2] !== undefined ? a[2] : (a[3] || '')).trim()
+                expr: decodeAttribute(a[2] !== undefined ? a[2] : (a[3] || '')).trim()
             });
             break;   // one region per element; a second would nest with itself
         }
@@ -599,12 +638,17 @@ export function eachFactory(binding, render) {
  * binding because it would write `undefined` over working markup.
  */
 function prepareExpression(source, handler, options) {
-    const ast = parseExpression(source, options);
+    // `methodCalls` comes from the HANDLER, not the template, so a page cannot
+    // opt itself into calling methods from an interpolation. Only the event
+    // binding declares it — see the note on eventHandler in handlers.js.
+    const parseOptions = {...options, methodCalls: handler.methodCalls === true};
+
+    const ast = parseExpression(source, parseOptions);
     if (ast === null) return null;
 
     return {
         ast,
-        evaluate: compileExpression(source, options),
+        evaluate: compileExpression(source, parseOptions),
         deps: handler.tracks === false ? new Set() : expressionDependencies(ast)
     };
 }
@@ -903,9 +947,15 @@ export function annotate(rawTemplate, options = {}) {
                 }
 
                 const handler = claim.handler;
+
+                // Decoded here and not at extraction: `value` is also the
+                // template for an ordinary attribute below, where the entities
+                // are markup and must survive.
+                const expr = decodeAttribute(value).trim();
+
                 const prepared = handler.expression === false
                     ? {ast: null, evaluate: null, deps: new Set()}
-                    : prepareExpression(value.trim(), handler, options);
+                    : prepareExpression(expr, handler, options);
                 if (prepared === null) continue;
 
                 const id = nextId(claim.kind);
@@ -914,7 +964,7 @@ export function annotate(rawTemplate, options = {}) {
                     id,
                     kind: claim.kind,
                     arg: claim.arg,
-                    expr: value.trim(),
+                    expr,
                     ast: prepared.ast,
                     evaluate: prepared.evaluate,
                     deps: prepared.deps,

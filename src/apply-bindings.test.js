@@ -11,7 +11,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {applyBindings, resetApplyWarnings} from './apply-bindings.js';
-import {flushSync, liveComputations} from './graph.js';
+import {computed, flushSync, liveComputations} from './graph.js';
 import {observable, observableArray} from './observable.js';
 import {registerBinding, unregisterBinding} from './handlers.js';
 
@@ -519,5 +519,147 @@ describe('a custom region binding', () => {
         handle.dispose();
         unregisterBinding('boxed');
         warn.mockRestore();
+    });
+});
+
+// ── The method-call opt-in is per HANDLER, not per entry point ────────────────
+//
+// applyBindings has its own compile path, separate from the template compiler's,
+// so "only the event binding may call a method" has to be true twice. The app
+// test above proves the permissive half here (a row calls $parent.remove); this
+// proves the strict half, which is the one that would fail silently — a leak
+// would not break anything visible, it would just let a method run inside an
+// effect on every render.
+
+describe('applyBindings refuses a method call outside an event binding', () => {
+    it('skips data-bind-text rather than calling it', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        let called = false;
+        host.innerHTML = '<b data-bind-text="api.name()"></b>';
+
+        const handle = applyBindings({api: {name: () => { called = true; return 'x'; }}}, host);
+
+        expect(called).toBe(false);
+        expect(host.querySelector('b').textContent).toBe('');
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('only registered helpers can be called')
+        );
+
+        handle.dispose();
+        warn.mockRestore();
+    });
+
+    it('skips data-if rather than calling it', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        let called = false;
+        host.innerHTML = '<b data-if="api.ok()">shown</b>';
+
+        const handle = applyBindings({api: {ok: () => { called = true; return false; }}}, host);
+
+        expect(called).toBe(false);
+        handle.dispose();
+        warn.mockRestore();
+    });
+});
+
+// ── One whole small application ───────────────────────────────────────────────
+//
+// Every other test here proves one binding in isolation, which is how a suite
+// can be green while the library is unusable: the failure that prompted this one
+// was not in any single binding but in the SEAM between two of them — a keyed
+// list renders, an event binding fires, and yet a row still had no way to name
+// the list that owns it, so a delete button was unspellable and every test
+// passed anyway.
+//
+// So this builds a real thing — add, edit, toggle, remove, derive, empty state —
+// out of nothing but the public API, and asserts on what the user would see. It
+// is deliberately the shape of the smallest app anyone actually writes.
+
+describe('a whole small application', () => {
+    it('adds, toggles, removes, and keeps a derived summary honest', async () => {
+        host.innerHTML = `
+            <input data-model="draft.value" id="draft">
+            <button data-on-click="add()" id="add">Add</button>
+            <ul data-each="todos key=id">
+              <li>
+                <input type="checkbox" data-model="done.value">
+                <span data-bind-class="done.value && 'struck'" data-bind-text="title"></span>
+                <button class="rm" data-on-click="$parent.remove($data)">x</button>
+              </li>
+            </ul>
+            <p id="empty" data-if="todos.length === 0">Nothing to do.</p>
+            <p id="summary" data-bind-text="summary.value"></p>`;
+
+        const todos = observableArray([]);
+        const draft = observable('');
+        let nextId = 1;
+
+        const vm = {
+            todos,
+            draft,
+            summary: computed(() => {
+                const all = todos.value;
+                return `${all.filter((t) => !t.done.value).length} of ${all.length} left`;
+            }),
+            add() {
+                if (draft.value.trim() === '') return;
+                todos.push({id: nextId++, title: draft.value.trim(), done: observable(false)});
+                draft.value = '';
+            },
+            remove(item) {
+                todos.remove(item);
+            }
+        };
+
+        const handle = applyBindings(vm, host);
+
+        const type = (text) => {
+            const input = host.querySelector('#draft');
+            input.value = text;
+            input.dispatchEvent(new window.Event('input', {bubbles: true}));
+        };
+        const click = (el) =>
+            el.dispatchEvent(new window.Event('click', {bubbles: true, cancelable: true}));
+        const titles = () => [...host.querySelectorAll('li span')].map((s) => s.textContent);
+        const summary = () => host.querySelector('#summary').textContent;
+
+        expect(host.querySelector('#empty')).not.toBeNull();
+
+        type('Write the README');
+        click(host.querySelector('#add'));
+        type('Ship 0.4.0');
+        click(host.querySelector('#add'));
+        await flushSync();
+
+        expect(titles()).toEqual(['Write the README', 'Ship 0.4.0']);
+        expect(summary()).toBe('2 of 2 left');
+        expect(host.querySelector('#empty')).toBeNull();
+
+        // The draft was cleared through the model, so the control follows.
+        expect(host.querySelector('#draft').value).toBe('');
+
+        // Ticking a row's box writes through data-model and the summary follows.
+        const box = host.querySelector('li input[type=checkbox]');
+        box.checked = true;
+        box.dispatchEvent(new window.Event('change', {bubbles: true}));
+        await flushSync();
+
+        expect(summary()).toBe('1 of 2 left');
+        expect(host.querySelector('li span').className).toBe('struck');
+
+        // The point of the whole test: a row reaching the list that owns it.
+        click(host.querySelectorAll('.rm')[1]);
+        await flushSync();
+
+        expect(titles()).toEqual(['Write the README']);
+        expect(summary()).toBe('0 of 1 left');
+
+        click(host.querySelector('.rm'));
+        await flushSync();
+
+        expect(titles()).toEqual([]);
+        expect(host.querySelector('#empty')).not.toBeNull();
+
+        handle.dispose();
     });
 });

@@ -1,11 +1,33 @@
 # domma-reactive
 
-Dependency-tracked reactivity: derivations discover which state they actually read, so a write re-runs exactly the work
-that depends on it. On top of that, a fine-grained DOM binding layer — mustache blocks, `data-*` behaviour bindings, an
-extensible binding registry and a CSP-safe expression language, with no `eval` and no `Function` constructor anywhere.
+Keep a page in step with your data, without a build step and without a framework. Change a value; the pieces of the page
+that show it update, and nothing else does.
+
+About **15 KB gzipped**, with **no dependencies** and **no `eval`**.
+
+Under the surface: derivations discover at runtime which state they actually read, so a write re-runs exactly the work
+that depends on it. Keyed lists *reconcile* — a row that stays in the collection keeps its actual DOM nodes, so its
+focus, its half-typed input and its scroll position survive a change to the list around it.
+
+The expression language is parsed by hand rather than compiled with the `Function` constructor, so bindings work under a
+strict Content Security Policy — `script-src 'self'`, no `unsafe-eval`.
 
 This is the reactive core of [Domma](https://github.com/pinpointzero73/domma), published separately so it can be used on
 its own.
+
+## Contents
+
+- [Install](#install) · [Quick start](#quick-start) · [A complete small app](#a-complete-small-app)
+- [Reactive core](#reactive-core) — [`observable`](#observable) · [`observableArray`](#observablearray) ·
+  [`computed`](#computed) · [`effect`](#effect) · [`subscribe`](#subscribe) · [Batching](#batching-and-flushsync) ·
+  [Disposal](#disposal)
+- [Template bindings](#template-bindings) — [the nine kinds](#nine-binding-kinds) ·
+  [`data-on-*`](#data-on-event) · [`data-bind-*`](#data-bind-name) · [`data-model`](#data-model) · [`data-if`](#data-if) ·
+  [custom bindings](#custom-bindings) · [binding context](#binding-context)
+- [Keyed lists](#keyed-lists) · [`applyBindings`](#applybindingsdata-rootelement) · [The renderer](#the-renderer) ·
+  [Expressions](#expressions)
+- [API reference](#api-reference) · [Coming from Knockout](#coming-from-knockout) ·
+  [Things that will catch you](#things-that-will-catch-you) · [Limits and non-goals](#limits-and-non-goals)
 
 ## Install
 
@@ -13,7 +35,30 @@ its own.
 npm install domma-reactive
 ```
 
-## Use
+```javascript
+import {observable, computed, effect} from 'domma-reactive';        // ESM
+const {observable} = require('domma-reactive');                     // CommonJS
+```
+
+Or as a plain script — the UMD bundle exposes the global `DommaReactive`:
+
+```html
+<script src="node_modules/domma-reactive/dist/domma-reactive.min.js"></script>
+<script>
+    const count = DommaReactive.observable(0);
+</script>
+```
+
+| File | Format | Size |
+|------|--------|------|
+| `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 44 KB, **15 KB gzipped** |
+| `dist/domma-reactive.cjs` | UMD — `require()` | 44 KB |
+| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 235 KB (comments intact; your bundler minifies) |
+
+The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
+Node or a worker. Only the compiler functions touch `document`, and only when called.
+
+## Quick start
 
 ```javascript
 import {observable, computed, effect} from 'domma-reactive';
@@ -23,36 +68,266 @@ const qty   = observable(3);
 
 const total = computed(() => price.value * qty.value);
 
-effect(() => console.log('total is', total.get()));
+effect(() => console.log('total is', total.value));   // logs "total is 30"
 
-qty.value = 4;   // effect re-runs on the next microtask
+qty.value = 4;                                        // logs "total is 40" on the next microtask
 ```
 
-Updates are batched: several writes in one tick produce a single re-run.
+Wire it to a page with `applyBindings`, which activates binding attributes on HTML that already exists:
 
-### `subscribe`
+```html
+<div id="app">
+    <input type="number" data-model="qty.value">
+    <p data-bind-text="total.value"></p>
+</div>
+```
+
+```javascript
+import {applyBindings} from 'domma-reactive';
+
+applyBindings({price, qty, total}, document.querySelector('#app'));
+```
+
+Every binding gets its own effect, so typing in the input updates the paragraph and nothing else on the page is touched.
+
+## A complete small app
+
+Everything below is one working application, built from nothing but the public API. It is the shape of the smallest app
+anyone actually writes: a list you add to, tick off, and delete from, with a derived summary and an empty state. This
+exact code is a test in the repository (`src/apply-bindings.test.js`), so it is verified rather than illustrative.
+
+```html
+<div id="app">
+    <input data-model="draft.value" placeholder="What needs doing?">
+    <button data-on-click="add()">Add</button>
+
+    <ul data-each="todos key=id">
+        <li>
+            <input type="checkbox" data-model="done.value">
+            <span data-bind-class="done.value && 'struck'" data-bind-text="title"></span>
+            <button data-on-click="$parent.remove($data)">×</button>
+        </li>
+    </ul>
+
+    <p data-if="todos.length === 0">Nothing to do.</p>
+    <p data-bind-text="summary.value"></p>
+</div>
+```
+
+```javascript
+import {applyBindings, observable, observableArray, computed} from 'domma-reactive';
+
+const todos = observableArray([]);
+const draft = observable('');
+let nextId  = 1;
+
+const app = {
+    todos,
+    draft,
+
+    summary: computed(() => {
+        const all = todos.value;
+        return `${all.filter(t => !t.done.value).length} of ${all.length} left`;
+    }),
+
+    add() {
+        if (draft.value.trim() === '') return;
+        todos.push({id: nextId++, title: draft.value.trim(), done: observable(false)});
+        draft.value = '';
+    },
+
+    remove(item) {
+        todos.remove(item);
+    }
+};
+
+const handle = applyBindings(app, document.querySelector('#app'));
+
+// When the page or component goes away:
+// handle.dispose();
+```
+
+Five things in there are worth pointing at:
+
+- **`done: observable(false)`, not `done: false`.** A plain property on an item is not reactive. `observableArray`
+  tracks the array — pushes, removes, reorders — not the fields inside its items. Make a field observable and it
+  updates; leave it plain and ticking the box changes nothing. This is the single most common early surprise.
+- **`$parent.remove($data)`** is how a row reaches the list that owns it. Inside a list `$data` is the *item*, so a bare
+  `remove` would be looked for on the item and not found. This is the one place an expression may call a method — see
+  [`data-on-<event>`](#data-on-event).
+- **`key=id` is not optional for `data-each`.** With it, deleting the second row leaves the first row's actual DOM node
+  in place, focus and all. Without it, `applyBindings` refuses the block and says so.
+- **`.value` everywhere.** There is no unwrapping magic: an observable is read and written through `.value`, in
+  JavaScript and in a template alike, so the two never disagree about what a name means.
+- **`data-bind-text`, not `{{ }}`.** `applyBindings` deliberately does not interpolate mustache in DOM that already
+  exists — [see why](#-in-already-rendered-dom-is-not-interpolated).
+
+If you own the markup rather than the page, [`compile()`](#template-bindings) takes a template string instead and gives
+you `{{ }}`, `{{#if}}` and `{{#each}}` as well.
+
+## Reactive core
+
+### `observable`
 
 ```javascript
 const count = observable(0);
 
-const off = count.subscribe((value) => console.log('now', value));
+count.value;              // 0 — tracked: registers a dependency
+count.value = 5;          // write
+count.set(5);             // the same write, as a call
+count.peek();             // read WITHOUT registering a dependency
+count.subscribe(fn);      // see below
+```
+
+`peek()` and `set()` are closures, not methods, so they survive being destructured off the observable or handed straight
+to a callback.
+
+The `equals` comparator gates **notification, not the write**. A write always lands; the graph only hears about it when
+the comparator reports a change, so a comparator that deliberately ignores part of the payload can never leave readers
+serving stale data:
+
+```javascript
+const user = observable({id: 1, seenAt: 0}, {equals: (a, b) => a.id === b.id});
+```
+
+The default is deep equality. The corollary of gating at all: **mutating the held value in place and assigning it back
+is invisible**, because old and new are the same reference. Derivations must produce new values, not edit old ones.
+
+### `observableArray`
+
+```javascript
+const rows = observableArray([{id: 1}]);
+
+rows.value;               // the underlying array — tracked
+rows.length;              // tracked, so a rendered count updates
+rows.peek();              // the live array, untracked
+rows.value = [...];       // wholesale replacement — gated by `equals`
+
+rows.push(item);          // and pop, shift, unshift, splice, sort, reverse, fill, copyWithin
+rows.remove(item);        // every occurrence of that exact object
+rows.remove(r => r.id > 2);   // every item the test accepts
+rows.removeAll();
+```
+
+The in-place mutators run the native method and return exactly what it returns, so `pop()` gives you the item and
+`splice()` gives you the removed slice.
+
+**Two write paths, two rules, deliberately.** Mutators notify *unconditionally* — an in-place mutation leaves the array
+equal to itself, so an equality gate could only be implemented by holding a copy and diffing it, at a full pass over the list per push.
+Wholesale assignment *is* gated, exactly as `observable()` is. The accepted cost is a spurious notification from a
+mutator that changed nothing (a no-op `sort()`), which errs towards notifying too often — the safe direction.
+
+The initial array, and any array assigned wholesale, is **copied rather than adopted**. Holding your reference would
+alias it: a push through the original would change what `.value` returns without ever reaching the graph, and the data
+and the DOM would disagree silently and permanently. If you genuinely want the live array, take it from `peek()`.
+
+`remove()` takes **either a value or a test**. A value matches by identity, which is what a reconciled list wants —
+`$parent.remove($data)` hands over the very object the row was rendered from. A function is called with `(item, index)`
+and everything it accepts goes.
+
+The one case this gives up is an array of bare functions removing one of its own members by passing it; `peek()` plus
+`splice()` still covers that.
+
+### `computed`
+
+```javascript
+const total = computed(() => price.value * qty.value);
+
+total.value;              // recompute if stale, then return — and register a dependency
+total.get();              // identical; `.value` is the form a template can use
+```
+
+Computeds are **lazy**: the body runs on first read and then only when something it read has changed. Dependencies are
+re-collected on every run, so a computed whose branch changed (`mode.value === 'a' ? x.value : y.value`) stops depending
+on the branch not taken.
+
+Prefer `.value`. It is the only spelling a template can use — an expression cannot call a method — and it means an
+observable and a computed look the same at the point of use.
+
+### `effect`
+
+```javascript
+const stop = effect(() => {
+    document.title = `${unread.value} unread`;
+});
+
+stop.dispose();
+```
+
+An effect runs **immediately**, so its dependencies are collected up front, and re-runs on the microtask flush after any
+of them changes. It sits at the leaves of the graph: nothing depends on an effect.
+
+`untracked(fn)` suspends collection for the duration of `fn`, which is how an effect reads something it must not
+subscribe to:
+
+```javascript
+effect(() => {
+    const rows = list.value;                       // tracked
+    untracked(() => analytics.send(rows.length));  // not
+});
+```
+
+### `subscribe`
+
+```javascript
+const off = count.subscribe(value => console.log('now', value));
 
 count.value = 1;   // logs immediately — no flush needed
 off();             // or off.dispose(), for Knockout muscle memory
 ```
 
 Subscribers fire **synchronously, at the write**, not on the flush that follows. You subscribed to a value, not to a
-graph settling. They are not `Computation`s, so a hundred subscriptions do not put a hundred nodes in the dependency
-graph.
+graph settling — so `count.value = 5` followed by an assertion about the callback needs no flush.
 
-They follow the same change gate the graph does: assigning a deeply equal value notifies nobody. `observableArray`
-mutators notify unconditionally, because an in-place mutation leaves the array equal to itself.
+They are not `Computation`s, so a hundred subscriptions do not put a hundred nodes in the dependency graph. They follow
+the same change gate: assigning a deeply equal value notifies nobody, and array mutators notify unconditionally.
+
+A subscriber that throws is reported and skipped — one bad callback must not turn a write into an exception at an
+unrelated call site.
+
+### Batching and `flushSync`
+
+Writes never recompute anything synchronously. They mark computations dirty, queue them, and schedule **one** microtask
+flush, so a burst of writes collapses into a single propagation pass and a single render:
+
+```javascript
+first.value = 'Ada';
+last.value  = 'Lovelace';
+age.value   = 36;
+// → one flush, one re-render
+```
+
+`flushSync()` drains the queue immediately and synchronously. It is what a test uses to assert on the DOM without
+awaiting a microtask:
+
+```javascript
+import {flushSync} from 'domma-reactive';
+
+rows.push({id: 2});
+flushSync();
+expect(host.querySelectorAll('li')).toHaveLength(2);
+```
+
+### Disposal
+
+An effect is a live node in the dependency graph, and dropping the DOM does not drop it. Every entry point returns
+something to tear down with, and **you must call it**:
+
+| Created by | Torn down by |
+|------------|--------------|
+| `effect(fn)` | `.dispose()` on the returned `Computation` |
+| `compile(…)` | `controller.destroy()` |
+| `applyBindings(…)` | `handle.dispose()` |
+| `observable.subscribe(fn)` | the returned `off()`, or `off.dispose()` |
+
+`handle.dispose()` drops every effect, listener, list instance and marker it created, restores a hidden `data-if`
+element, and leaves the markup as it found it. Both are safe to call twice.
 
 ## Template bindings
 
-The package ships a binding compiler that turns a mustache template into a set of *fine-grained* bindings, each owning a
-small region of the DOM. A structural change re-renders only the block that changed — everything else keeps its node
-identity, so focus, scroll position and unsaved input survive.
+`compile()` turns a mustache template into a set of *fine-grained* bindings, each owning a small region of the DOM. A
+structural change re-renders only the block that changed — everything else keeps its node identity, so focus, scroll
+position and unsaved input survive.
 
 ```javascript
 import {compile} from 'domma-reactive';
@@ -65,25 +340,8 @@ const controller = compile('<p>Hello {{name}}</p>', {name: 'Ada'}, host);
 controller.updateAll({name: 'Grace'});   // only the span is touched
 ```
 
-Wire it to the graph by giving each binding its own effect:
-
-```javascript
-import {compile, observable, effect} from 'domma-reactive';
-
-const name = observable('alice');
-const controller = compile('<b>{{name}}</b>', {name: name.value}, host);
-
-for (const binding of controller.bindings) {
-    effect(() => controller.update(binding.id, {name: name.value}));
-}
-
-name.value = 'bob';   // only the <b> is touched
-```
-
-`controller.deps(id)` gives the root names a binding reads, which is what lets you subscribe an effect to exactly the
-right state rather than re-rendering wholesale.
-
-Or let the compiler wire them for you:
+`compile(template, data, container, renderFn?, options?)`. Pass `{reactive: true}` and every binding gets its own
+effect, collected from what it actually reads:
 
 ```javascript
 const name = observable('alice');
@@ -92,11 +350,19 @@ const controller = compile('<b data-bind-text="name.value"></b>', {name}, host, 
 name.value = 'bob';   // the <b> follows, with nothing else to do
 ```
 
-`{reactive: true}` gives every binding its own effect, collected from what it actually reads. It is off by default
-because Domma wires its own; a standalone consumer almost certainly wants it on. Either way, **list items always own
-their effects** — nothing else is in a position to.
+It is off by default because Domma wires its own. A standalone consumer almost certainly wants it on. Either way,
+**list items always own their effects** — nothing else is in a position to.
 
-Call `controller.destroy()` when the markup goes away.
+The controller:
+
+| | |
+|---|---|
+| `bindings` | the binding records, each with `id`, `kind`, `expr`, `deps` |
+| `deps(id)` | the root names one binding reads — how you subscribe an effect to exactly the right state |
+| `update(id, data)` | re-run one binding |
+| `updateAll(data)` | re-run all of them |
+| `context()` | the binding context in force |
+| `destroy()` | tear everything down |
 
 ### Nine binding kinds
 
@@ -129,14 +395,33 @@ The expression is either a reference that evaluates to a function, or a call:
 ```html
 <button data-on-click="save">Save</button>
 <button data-on-click="remove(item, 2)">Delete</button>
+<button data-on-click="$parent.remove($data)">Delete</button>
 ```
 
 Your declared arguments come first and the **event is always the last argument**, so a handler that wants only the event
-and one that wants arguments are spelled the same way round. `this` is `$data`. Returning `false` calls
-`preventDefault()`.
+and one that wants arguments are spelled the same way round. Returning `false` calls `preventDefault()`.
 
-The callee of the call form is resolved against your data, not against the helper registry — an event handler is a
-method on your data, and the evaluator is right to refuse to call one during a render.
+The callee is resolved against your data, not against the helper registry — an event handler is a method on your data,
+and the evaluator is right to refuse to call one during a render.
+
+**A method call is allowed here and nowhere else.** Inside a list `$data` is the item, and a bare name resolves against
+`$data` only, so `$parent.remove($data)` is how a row reaches the list that owns it. Everywhere else — `{{ }}`,
+`data-if`, `data-bind-*` — `x.foo()` is still a parse error, because those are reads that run inside an effect and a
+call during a read is a side effect. An event fires on a gesture, outside every effect.
+
+`this` follows JavaScript's own rule, which is easier to remember than any rule this library could invent:
+
+| Expression             | `this`     | Why                                     |
+|------------------------|------------|-----------------------------------------|
+| `save`                 | `$data`    | a reference; no receiver was named      |
+| `save(x)`              | `$data`    | a bare callee is a name on `$data`      |
+| `handlers.save`        | `$data`    | still a reference — nothing is called   |
+| `handlers.save()`      | `handlers` | a method call keeps its receiver        |
+
+The last two are exactly `const f = o.m; f()` versus `o.m()`.
+
+The method name is read through the same guard as every other property read, so `$data.constructor()` is refused for the
+same reason `{{ $data.constructor }}` is.
 
 Event bindings declare **no dependencies**: the listener is attached once and reads the context at dispatch time, so
 there is nothing for an effect to re-run.
@@ -165,7 +450,8 @@ handler remembers the tokens it applied and swaps only those:
 A falsy value contributes no classes at all, which is what makes that idiom work — `isActive && 'on'` is `false`, not
 `''`, when it is off.
 
-**There is no `data-bind-html`.** Assigning `innerHTML` from data is the shortest route to an XSS hole, and the template
+**There is no `data-bind-html`.** Assigning `innerHTML` from data is the shortest route to a cross-site scripting (XSS)
+hole, and the template
 already has an explicit, greppable opt-out for it: `{{{triple-stache}}}`. Using the attribute logs one warning and
 writes nothing.
 
@@ -311,9 +597,8 @@ controller.updateAll(data);
 `key=` names the property that identifies an item; a dotted path (`key=meta.ref`) works too. It must be an identity, not
 a value — a key that changes when the item's *contents* change defeats the whole mechanism.
 
-**Without `key=` the block falls back to re-rendering wholesale** and says so once, naming the template. That is the
-Tier 3 behaviour every template written before this milestone relies on, so nothing breaks; it simply costs you node
-identity. Pass `{warnUnkeyed: false}` in the compiler options to silence it.
+**Without `key=` the block falls back to re-rendering wholesale** and says so once, naming the template. Nothing breaks;
+it simply costs you node identity. Pass `{warnUnkeyed: false}` in the compiler options to silence it.
 
 ### What works inside a keyed block
 
@@ -323,14 +608,15 @@ Everything. Each item gets its own binding context and its own effects:
 {{#each rows key=id}}
     <li data-bind-class="done && 'complete'">
         <input data-model="title">
-        <button data-on-click="$root.remove">×</button>
+        <button data-on-click="$parent.remove($data)">×</button>
         {{#if note}}<small>{{note}}</small>{{/if}}
         {{#each tags key=id}}<span>{{$parent.title}}/{{name}}</span>{{/each}}
     </li>
 {{/each}}
 ```
 
-An event binding's `this` is `$data` — the item — so `$root.remove` above receives the row it was clicked on as `this`.
+`$parent.remove($data)` calls `remove` on the parent view model with the clicked row as its argument. That is the one
+place a method call is permitted in an expression — see [`data-on-<event>`](#data-on-event).
 
 The renderer's loop variables (`{{.}}`, `{{@index}}`, `{{@first}}`, `{{@last}}`) resolve inside a keyed block too, so
 adding `key=` to an existing block never silently blanks anything.
@@ -350,14 +636,12 @@ Each item is an *instance*: a pair of comment anchors, the nodes between them, a
 An instance is disposed — **effects first, then nodes** — when its key leaves the collection, when an enclosing region
 re-renders over it, or when the controller is destroyed.
 
-**Call `controller.destroy()`.** A list's effects are live nodes in the dependency graph and dropping the DOM does not
-drop them.
-
 ### Deferred: minimal moves
 
 Placement is **in order**. That is correct for append, prepend, insert, remove and reorder, and it performs more DOM
 moves than strictly necessary — reversing n items costs n moves rather than n-1, and dragging one item from the end to
-the front costs n rather than 1. The refinement is longest-increasing-subsequence move minimisation. Nothing about
+the front costs n rather than 1. The refinement is longest-increasing-subsequence move minimisation — an algorithm that works out the smallest set
+of moves that will do. Nothing about
 correctness or node identity depends on it: an instance that is moved is the same instance, with the same nodes and the
 same effects.
 
@@ -429,14 +713,8 @@ re-renders from a captured template body, and here the markup *is* the page.
 ## The renderer
 
 `compile(template, data, container, renderFn)` still takes the mustache renderer as a parameter, and a caller who passes
-one gets exactly that. **The parameter is optional.** It used to be mandatory, which meant that after
-`npm install domma-reactive` this threw `renderFn is not a function`:
-
-```javascript
-compile('<p>{{name}}</p>', {name: 'Ada'}, host);
-```
-
-It now renders. The default is `renderTemplate`, which is exported so you can use it on its own:
+one gets exactly that. **The parameter is optional**, and the default is `renderTemplate`, exported so you can use it on
+its own:
 
 ```javascript
 import {renderTemplate} from 'domma-reactive';
@@ -463,9 +741,9 @@ differences below were verified against `utils.render` at Domma v0.33.1 rather t
 | `{{helper arg}}` (space-separated) | calls a registered helper | **not supported** — renders empty, no warning. Use `helper(arg)` |
 | Escaping, missing values, `{{#each}}` item scope, `{{@index}}`, `{{#with}}`, kebab-case keys | | identical |
 
-The first four rows are cases where Domma's renderer is broken and this one is not, so a template that works under
-Domma works here. **The reverse is not guaranteed** — an expression or a nested same-kind block written against this
-renderer will not survive a move to `utils.render`.
+The first four rows are cases Domma's renderer does not handle correctly and this one does, so a template that works
+under Domma works here. **The reverse is not guaranteed** — an expression or a nested same-kind block written against
+this renderer will not survive a move to `utils.render`.
 
 ### Expressions in `{{ }}`, and what the compiler binds
 
@@ -476,8 +754,7 @@ parses. `{{.}}`, `{{@index}}` and `{{helper arg}}` are left to the renderer, and
 `{{ a - b }}` is arithmetic.
 
 An expression interpolation is evaluated once immediately after the first paint, because the injected renderer may not
-understand it — which is how `{{ n > 1 ? 'many' : 'one' }}` renders correctly even under a renderer that only
-substitutes paths. `data-bind-*`, `data-model` and `data-if` are primed the same way, for the same reason: there is no
+understand it. `data-bind-*`, `data-model` and `data-if` are primed the same way, for the same reason: there is no
 `{{ }}` token in an attribute for a renderer to substitute.
 
 `{{{raw}}}` and `class="{{cls}}"` still go through the renderer and still accept dotted paths only. Use `data-bind-*`
@@ -503,9 +780,7 @@ evaluate({count: 0, label: 'items'});   // 'none'
 parse, so a caller can skip the binding rather than render a lie.
 
 This is the engine every binding runs on: `data-bind-*`, `data-model`, `data-if`, `data-on-*`, non-path `{{ }}`
-interpolations and the default renderer all evaluate through it. The other six entry points are `parseExpression`
-(source → AST, or `null`), `evaluateAst` (AST → value), `evaluateExpression` (source → value in one call),
-`expressionDependencies` (which names an expression reads), `unregisterHelper` and `clearExpressionCache`.
+interpolations and the default renderer all evaluate through it.
 
 `expressionDependencies` is what lets you wire one effect per binding without guessing:
 
@@ -527,38 +802,155 @@ expressionDependencies('$parent.name');       // Set {} — position, not state
 | Ternary       | `a ? b : c`                                      |
 | Unary         | `- + !`                                          |
 | Calls         | `helper(arg, …)` — **registered helpers only**   |
-| Context       | `$data`, `$root`, `$parent`, `$index`            |
+| Context       | `$data`, `$root`, `$parent`, `$index`, `$length` |
 
-Precedence and associativity are JavaScript's. `1 + 2 * 3` is 7; `10 - 3 - 2` is 5.
+Precedence and associativity are JavaScript's. `1 + 2 * 3` is 7; `10 - 3 - 2` is 5. Nesting is capped at 64 levels.
 
 ### What it does not support, and will not
 
 Assignment. `new`. Member calls — `user.toUpperCase()` does not work, and neither does `alert(1)`; the only callable
-things are helpers you registered. Loose equality (`==`), nullish coalescing (`??`), regular expressions, object and
-array literals, template literals, comma sequences. Reads of `__proto__`, `constructor` and `prototype`, in any form —
-including `a[key]` where `key` holds `'__proto__'` at runtime.
+things are helpers you registered. (`data-on-*` is the single exception, and only because an event fires outside every
+effect — see [`data-on-<event>`](#data-on-event).) Loose equality (`==`), nullish coalescing (`??`), regular expressions,
+object and array literals, template literals, comma sequences. Reads of `__proto__`, `constructor` and `prototype`, in
+any form — including `a[key]` where `key` holds `'__proto__'` at runtime.
 
 Most of those are recognised specifically so they can be refused with a message that says what to do instead. Anything
 more complicated than the grammar above belongs in a `computed`, not in a template.
 
-There is no scope-chain walk: a bare name resolves against `$data` only. Reach a level up with `$parent.name`, which
-says what it means.
-
 ### Failure is never fatal
 
-A malformed expression logs one warning naming the source (and the template, if you passed
-`{template: 'user-card'}`) and yields `null` from `parseExpression` / `undefined` from `evaluateExpression`. An
-evaluation error — a helper that threw, a nesting depth beyond 64 — does the same. Nothing in this module throws on
-expression input, so one bad binding cannot blank a page.
+A malformed expression logs one warning naming the source (and the template, if you passed `{template: 'user-card'}`)
+and yields `null` from `parseExpression` / `undefined` from `evaluateExpression`. An evaluation error — a helper that
+threw, a nesting depth beyond 64 — does the same. Nothing in this module throws on expression input, so one bad binding
+cannot blank a page.
 
 The exception is `registerHelper`, which throws a `TypeError` on a bad name or a non-function. That is a bug in your
 code, not input, and it should be loud.
 
-### It runs under a strict CSP
+### It runs under a strict Content Security Policy
 
 There is no `eval` and no `Function` constructor anywhere in the package — asserted against the source in the unit
 suite and against all three built bundles in `npm run test:dist`. Bindings therefore work under
-`script-src 'self'` without `unsafe-eval`, which is where Knockout's expression evaluation stops working.
+`script-src 'self'` without `unsafe-eval`.
+
+## API reference
+
+Twenty-nine names. Anything not listed here is an internal detail and may change without a major version bump.
+
+**State**
+
+| Name | Signature |
+|------|-----------|
+| `observable` | `(initial, {equals?}) → {value, peek(), set(v), subscribe(fn)}` |
+| `observableArray` | `(initial?, {equals?}) → {value, length, peek(), set(a), remove(valueOrTest), removeAll(), subscribe(fn), …mutators}` |
+| `isEqual` | `(a, b) → boolean` — the deep comparison the change gate uses |
+
+**Graph**
+
+| Name | Signature |
+|------|-----------|
+| `computed` | `(fn, {label?}) → Computation` — read via `.value` or `.get()` |
+| `effect` | `(fn, {label?}) → Computation` — runs immediately; `.dispose()` to stop |
+| `untracked` | `(fn) → any` — run `fn` with dependency collection suspended |
+| `flushSync` | `() → void` — drain the pending queue now, synchronously |
+| `Dep` | class — one reactive slot; `track()`, `trigger()` |
+| `DepMap` | class — lazily-populated keyed collection of `Dep`s |
+| `Computation` | class — the node type behind `computed` and `effect` |
+| `trackingProxy` | `(target, depFor, {onSet?}) → Proxy` — wrap a host store's data so reads are tracked |
+
+**Bindings**
+
+| Name | Signature |
+|------|-----------|
+| `compile` | `(template, data, container, renderFn?, options?) → controller` |
+| `applyBindings` | `(data, rootElement) → handle` |
+| `annotate` | `(template, options?) → {annotated, bindings}` — string-only; no DOM needed |
+| `scanBlocks` | `(template) → block records` — string-only |
+| `TemplateCompiler` | the above grouped as an object, plus `resolvePath` |
+| `registerBinding` | `(name, handler) → handler` |
+| `unregisterBinding` | `(name) → boolean` |
+| `createRootContext` | `(data) → context` |
+| `createChildContext` | `(parent, data, index?, length?) → context` |
+
+**Expressions and rendering**
+
+| Name | Signature |
+|------|-----------|
+| `parseExpression` | `(source, options?) → AST \| null` |
+| `evaluateAst` | `(ast, context) → any` |
+| `evaluateExpression` | `(source, context, options?) → any` |
+| `compileExpression` | `(source, options?) → (context) => any \| null` |
+| `expressionDependencies` | `(sourceOrAst, options?) → Set<string>` |
+| `registerHelper` | `(name, fn) → fn` — throws on a bad name |
+| `unregisterHelper` | `(name) → boolean` |
+| `clearExpressionCache` | `() → number` — entries dropped |
+| `renderTemplate` | `(template, data, {partials?}) → string` |
+
+## Coming from Knockout
+
+The concepts map closely; the spellings do not. Nothing here is a drop-in replacement, and the differences are
+deliberate rather than incidental.
+
+| Knockout | domma-reactive |
+|----------|----------------|
+| `ko.observable(1)` — read `o()`, write `o(2)` | `observable(1)` — read `o.value`, write `o.value = 2` |
+| `ko.observableArray([])` | `observableArray([])` — `remove()` takes a value or a test, as Knockout's does |
+| `ko.computed(fn)` / `ko.pureComputed(fn)` | `computed(fn)` — always lazy |
+| `ko.applyBindings(vm, el)` | `applyBindings(vm, el)` |
+| `ko.cleanNode(el)` | `handle.dispose()` |
+| `data-bind="text: name"` | `data-bind-text="name"` |
+| `data-bind="css: {on: isActive}"` | `data-bind-class="isActive && 'on'"` |
+| `data-bind="value: query"` | `data-model="query"` |
+| `data-bind="click: save"` | `data-on-click="save"` |
+| `data-bind="if: isOpen"` | `data-if="isOpen"` |
+| `data-bind="foreach: rows"` | `data-each="rows key=id"`, or `{{#each rows key=id}}` |
+| `$data` `$root` `$parent` `$index` | identical |
+| `$parents[2]` | **not available** — `$parent` reaches one level |
+| `ko.utils.unwrapObservable(x)` | **none** — read `.value` explicitly |
+| `sub.dispose()` | `off()` or `off.dispose()` |
+
+The three differences worth knowing before you start:
+
+- **Reads are properties, not calls.** `o.value`, never `o()`. That is what lets a template read an observable at all,
+  since the expression language refuses method calls.
+- **`key=` is how lists reconcile.** Knockout's `foreach` diffs by identity automatically; here you name the key, and
+  `data-each` insists on one.
+- **No `unsafe-eval` required.** Knockout compiles binding strings with the `Function` constructor, which a strict
+  Content Security Policy blocks outright. This parses them instead.
+
+## Things that will catch you
+
+Every one of these was hit while building the example app above.
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Ticking a checkbox changes nothing | A plain field on a list item is not reactive | `done: observable(false)`, and bind `done.value` |
+| `{{name}}` renders literally | `applyBindings` never interpolates mustache | `data-bind-text="name"` |
+| `data-each` renders nothing, with a warning | No `key=` | `data-each="rows key=id"` |
+| `{{total.get()}}` will not parse | An expression cannot call a method | `total.value`, which is the same read |
+| A binding is silently skipped | Its expression did not parse; look for the warning | The warning names the source and the template |
+| Effects keep running after the DOM is gone | Nothing disposed them | `handle.dispose()` / `controller.destroy()` |
+| Mutating an object and reassigning it does nothing | The change gate compares old and new — the same reference | Produce a new value |
+
+Nothing in the binding layer throws on bad input. Every failure above logs exactly one warning, naming the expression
+and the template, and skips that binding alone — one broken binding does not take the rest of the page down with it.
+
+## Limits and non-goals
+
+This is a reactivity and binding layer. It is **not** a framework: there is no router, no component model, no
+lifecycle hooks, no server-side-rendering hydration beyond `applyBindings`, and no devtools.
+
+Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `$parents[n]`, no `data-bind-html`, no
+observable unwrapping, no `eval`-backed expressions, and no minimal-move list reconciliation yet.
+
+## Development
+
+```bash
+npm test           # watch
+npm run test:run   # once — 676 tests
+npm run build      # dist/
+npm run test:dist  # verify all 29 exports through require(), import() and <script>
+```
 
 ## Licence
 

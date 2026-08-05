@@ -253,12 +253,20 @@ export function applyBindings(data, rootElement, options = {}) {
     function prepare(source, handler, where) {
         if (handler.expression === false) return {ast: null, evaluate: null, deps: new Set()};
 
-        const ast = parseExpression(source, {template: `${label} ${where}`});
+        // `methodCalls` comes from the HANDLER, not the markup: only the event
+        // binding declares it, so `x.foo()` stays a parse error everywhere a
+        // call would run inside an effect. See eventHandler in handlers.js.
+        const options = {
+            template: `${label} ${where}`,
+            methodCalls: handler.methodCalls === true
+        };
+
+        const ast = parseExpression(source, options);
         if (ast === null) return null;
 
         return {
             ast,
-            evaluate: compileExpression(source, {template: `${label} ${where}`}),
+            evaluate: compileExpression(source, options),
             deps: handler.tracks === false ? new Set() : expressionDependencies(ast)
         };
     }

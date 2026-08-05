@@ -206,3 +206,73 @@ describe('observableArray', () => {
         expect(items.value).toEqual([]);
     });
 });
+
+// ── remove(): a value, or a test ──────────────────────────────────────────────
+//
+// `remove(item)` matches by identity, which is right and is what a reconciled
+// list wants — `$parent.remove($data)` hands over the very object the row was
+// rendered from. But the other spelling is the one people reach for first, and
+// it used to fail SILENTLY: a function was compared against each item by
+// identity, never matched, and removed nothing without a word.
+//
+// So a function argument is now a test. The case that gives up is an array of
+// bare functions removing one of its own members by passing it; that is rare,
+// and `peek()` plus `splice()` still covers it.
+
+describe('remove() accepts a test function', () => {
+    it('removes every item the test returns true for', () => {
+        const items = observableArray([{id: 1}, {id: 2}, {id: 3}]);
+
+        items.remove((item) => item.id !== 2);
+
+        expect(items.value.map((i) => i.id)).toEqual([2]);
+    });
+
+    it('passes the item and its index', () => {
+        const seen = [];
+        const items = observableArray(['a', 'b', 'c']);
+
+        items.remove((item, index) => {
+            seen.push([item, index]);
+            return false;
+        });
+
+        // Walked back to front, because removing while walking forward would
+        // skip the element after each hit.
+        expect(seen).toEqual([['c', 2], ['b', 1], ['a', 0]]);
+    });
+
+    it('still removes by identity when given a value', () => {
+        const a = {id: 1};
+        const items = observableArray([a, {id: 1}]);
+
+        items.remove(a);
+
+        expect(items.value).toHaveLength(1);
+        expect(items.value[0]).not.toBe(a);
+    });
+
+    it('notifies once, even when the test matched nothing', async () => {
+        const items = observableArray([1, 2]);
+        let runs = 0;
+        effect(() => { items.value; runs++; });
+        expect(runs).toBe(1);
+
+        items.remove((n) => n > 99);
+        await tick();
+
+        expect(runs).toBe(2);
+        expect(items.value).toEqual([1, 2]);
+    });
+
+    it('is chainable, as the value form is', () => {
+        const items = observableArray([1, 2, 3]);
+        expect(items.remove((n) => n === 2).remove((n) => n === 3).value).toEqual([1]);
+    });
+
+    it('removes nothing when the test never passes', () => {
+        const items = observableArray([1, 2]);
+        items.remove(() => false);
+        expect(items.value).toEqual([1, 2]);
+    });
+});

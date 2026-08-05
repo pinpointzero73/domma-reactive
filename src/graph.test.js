@@ -460,3 +460,56 @@ describe('reactive graph - error handling', () => {
         }
     });
 });
+
+// ── Reading a computed as a property ──────────────────────────────────────────
+//
+// `computed()` returns a Computation, whose canonical read is `get()`. A
+// TEMPLATE cannot call it: the expression evaluator refuses method calls,
+// deliberately, because a call inside a render is a side effect. So a computed
+// was unreadable from a binding — `{{total.get()}}` will not parse, and
+// `{{total.value}}` used to reach a plain cached FIELD that neither recomputed
+// nor registered a dependency, which is worse than unreadable because it renders
+// a stale number once and then never changes.
+//
+// `.value` is now the same read as `get()`, which also makes a computed and an
+// observable spell their read identically.
+
+describe('computed().value', () => {
+    /** A tracked source, built from DepMap so this file stays graph-only. */
+    function source(initial) {
+        const deps = new DepMap();
+        let held = initial;
+        return {
+            read() { deps.for('v').track(); return held; },
+            write(next) { held = next; deps.trigger('v'); }
+        };
+    }
+
+    it('recomputes when dirty, exactly as get() does', () => {
+        const n = source(2);
+        const double = computed(() => n.read() * 2);
+
+        expect(double.value).toBe(4);
+        n.write(5);
+        expect(double.value).toBe(10);
+    });
+
+    it('registers a dependency, so a reader re-runs', async () => {
+        const n = source(1);
+        const double = computed(() => n.read() * 2);
+
+        const seen = [];
+        effect(() => seen.push(double.value));
+
+        n.write(3);
+        await flushSync();
+
+        expect(seen).toEqual([2, 6]);
+    });
+
+    it('agrees with get()', () => {
+        const n = source(4);
+        const half = computed(() => n.read() / 2);
+        expect(half.value).toBe(half.get());
+    });
+});

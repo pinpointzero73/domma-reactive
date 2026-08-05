@@ -276,7 +276,28 @@ export function observableArray(initial = [], options = {}) {
         set: (next) => write(next),
 
         /**
-         * Remove every occurrence of a value, in place.
+         * Remove items in place — every occurrence of a value, or everything a
+         * test function accepts.
+         *
+         * ── Why a function is a test and not a value ─────────────────────────
+         *
+         * `remove(item)` matching by identity is what a reconciled list wants:
+         * `$parent.remove($data)` hands over the very object the row was
+         * rendered from. But `remove(t => t.id === 2)` is the spelling most
+         * people reach for first, and treating it as a value made it fail in
+         * the worst available way — the function was compared against each item
+         * by identity, never matched, and removed nothing without a word.
+         *
+         * The case this gives up is an array of bare functions removing one of
+         * its own members by passing it. That is rare, `peek()` plus `splice()`
+         * still covers it, and it is a far better thing to lose than a silent
+         * no-op on the common spelling. Knockout resolves the same ambiguity
+         * the same way.
+         *
+         * Walked back to front, because removing while walking forward skips
+         * the element after each hit. The index handed to the test is therefore
+         * still the item's real index: splicing at `i` cannot disturb anything
+         * before it.
          *
          * Notifies even when nothing matched. `remove`/`removeAll` follow the
          * mutator rule, not the assignment rule — gating them on "did anything
@@ -286,10 +307,17 @@ export function observableArray(initial = [], options = {}) {
          * Domma's own inventions, where a caller may reasonably expect
          * removing an absent item to be a no-op; `sort()` carries no such
          * expectation.
+         *
+         * @param {*|function(*, number): boolean} match a value, or a test
+         * @returns {Object} this observableArray, so calls chain
          */
-        remove: (item) => {
+        remove: (match) => {
+            const test = typeof match === 'function'
+                ? match
+                : (item) => item === match;
+
             for (let i = current.length - 1; i >= 0; i--) {
-                if (current[i] === item) current.splice(i, 1);
+                if (test(current[i], i)) current.splice(i, 1);
             }
             announce();
             return api;

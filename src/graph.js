@@ -171,7 +171,7 @@ export class Computation {
         /** Deps representing *this* computation's output, for transitive tracking. */
         this.dep   = new Dep(this);
 
-        this.value    = undefined;
+        this._value   = undefined;
         this.dirty    = true;
         this.disposed = false;
 
@@ -210,11 +210,30 @@ export class Computation {
      */
     get() {
         if (this.dirty && !this.disposed) {
-            this.value = this._run();
+            this._value = this._run();
             this.dirty = false;
         }
         this.dep.track();
-        return this.value;
+        return this._value;
+    }
+
+    /**
+     * The same read as `get()`, spelled as a property.
+     *
+     * Not sugar. A template expression cannot call a method — the evaluator
+     * refuses `x.foo()` because a call inside a render is a side effect — so
+     * `{{total.get()}}` does not parse, and without this a computed could not be
+     * read from a binding at all. It also makes an observable and a computed
+     * spell their read the same way, which is what an author expects of two
+     * things the documentation presents side by side.
+     *
+     * The cached result lives in `_value` rather than `value` precisely so this
+     * getter can exist: a plain `value` field was reachable, stale, and silent —
+     * it neither recomputed nor registered a dependency, so a binding that read
+     * it rendered one wrong number and then never changed again.
+     */
+    get value() {
+        return this.get();
     }
 
     /**
@@ -225,13 +244,13 @@ export class Computation {
      * @returns {{ changed: boolean, value: * }}
      */
     recompute() {
-        if (this.disposed) return { changed: false, value: this.value };
+        if (this.disposed) return { changed: false, value: this._value };
 
-        const previous = this.value;
-        this.value = this._run();
+        const previous = this._value;
+        this._value = this._run();
         this.dirty = false;
 
-        return { changed: !isEqual(previous, this.value), value: this.value };
+        return { changed: !isEqual(previous, this._value), value: this._value };
     }
 
     /** Mark stale without recomputing. */
@@ -250,7 +269,7 @@ export class Computation {
     /** Fire the change callback (for effects, and for render hookups). */
     notify() {
         if (this.disposed || !this.onNotify) return;
-        this.onNotify(this.value, this);
+        this.onNotify(this._value, this);
     }
 
     /** Unlink from the graph. Safe to call more than once. */
