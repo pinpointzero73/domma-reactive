@@ -30,6 +30,24 @@ qty.value = 4;   // effect re-runs on the next microtask
 
 Updates are batched: several writes in one tick produce a single re-run.
 
+### `subscribe`
+
+```javascript
+const count = observable(0);
+
+const off = count.subscribe((value) => console.log('now', value));
+
+count.value = 1;   // logs immediately — no flush needed
+off();             // or off.dispose(), for Knockout muscle memory
+```
+
+Subscribers fire **synchronously, at the write**, not on the flush that follows. You subscribed to a value, not to a
+graph settling. They are not `Computation`s, so a hundred subscriptions do not put a hundred nodes in the dependency
+graph.
+
+They follow the same change gate the graph does: assigning a deeply equal value notifies nobody. `observableArray`
+mutators notify unconditionally, because an in-place mutation leaves the array equal to itself.
+
 ## Template bindings
 
 The package ships a binding compiler that turns a mustache template into a set of *fine-grained* bindings, each owning a
@@ -65,16 +83,32 @@ name.value = 'bob';   // only the <b> is touched
 `controller.deps(id)` gives the root names a binding reads, which is what lets you subscribe an effect to exactly the
 right state rather than re-rendering wholesale.
 
-### Eight binding kinds
+Or let the compiler wire them for you:
 
-Four come from mustache syntax:
+```javascript
+const name = observable('alice');
+const controller = compile('<b data-bind-text="name.value"></b>', {name}, host, undefined, {reactive: true});
 
-| Kind    | Template            | Updated by                              |
-|---------|---------------------|-----------------------------------------|
-| `text`  | `{{name}}`          | `textContent` on a `<span>` anchor       |
-| `attr`  | `class="{{cls}}"`   | `setAttribute` on the owning element     |
-| `block` | `{{#if x}}…{{/if}}` | re-rendering a comment-delimited region  |
-| `raw`   | `{{{html}}}`        | re-rendering a comment-delimited region  |
+name.value = 'bob';   // the <b> follows, with nothing else to do
+```
+
+`{reactive: true}` gives every binding its own effect, collected from what it actually reads. It is off by default
+because Domma wires its own; a standalone consumer almost certainly wants it on. Either way, **list items always own
+their effects** — nothing else is in a position to.
+
+Call `controller.destroy()` when the markup goes away.
+
+### Nine binding kinds
+
+Five come from mustache syntax:
+
+| Kind    | Template                       | Updated by                              |
+|---------|--------------------------------|-----------------------------------------|
+| `text`  | `{{name}}`                     | `textContent` on a `<span>` anchor       |
+| `attr`  | `class="{{cls}}"`              | `setAttribute` on the owning element     |
+| `block` | `{{#if x}}…{{/if}}`            | re-rendering a comment-delimited region  |
+| `raw`   | `{{{html}}}`                   | re-rendering a comment-delimited region  |
+| `each`  | `{{#each xs key=id}}…{{/each}}`| **reconciling**, per item — see below    |
 
 Four come from `data-*` attributes. Attributes rather than `{{ }}` because `{{ }}` produces a *string*, and events and
 two-way binding need a reference to a DOM element that survives rendering:
@@ -226,9 +260,10 @@ Expressions resolve against a context, not a bare data object:
 | `$root`   | the top-level data, however deep the nesting         |
 | `$parent` | the enclosing **data** (not the enclosing context)    |
 | `$index`  | position within a list                               |
+| `$length` | size of the enclosing list                            |
 
-All four resolve everywhere. Outside a list or `with` block, `$data` and `$root` are the top-level data, `$parent` is
-`null` and `$index` is `null` — so a binding never has to ask where it is. Pass plain data anywhere a context is
+All five resolve everywhere. Outside a list or `with` block, `$data` and `$root` are the top-level data, and `$parent`,
+`$index` and `$length` are `null` — so a binding never has to ask where it is. Pass plain data anywhere a context is
 accepted and it is promoted for you.
 
 ```javascript
@@ -244,15 +279,152 @@ child.$index;          // 0
 There is no scope-chain walk: a bare name resolves against `$data` only. Reach a level up with `$parent.name`, which
 says what it means.
 
-### Known limits (the reconciler is M4)
+### Known limits
 
-Bindings inside `{{#each}}` and `{{#with}}` are **not** bound independently — the block re-renders as a whole. A
-behaviour binding inside one is skipped, with a warning naming the attribute, because a click handler that is quietly
-not wired is worse than one that says so. Keyed reconciliation, per-item contexts and instance lifecycle are the next
-milestone.
+Bindings inside an **unkeyed** `{{#each}}`, and inside `{{#with}}`, are not bound independently — the block re-renders as
+a whole, and a behaviour binding inside one is skipped with a warning naming the attribute. Add `key=` and every one of
+them works; see [Keyed lists](#keyed-lists).
 
-`controller.destroy()` removes the listeners on nodes still indexed. Nodes discarded by a region re-render were
-collected along with their listeners; per-instance disposal as a list churns is also M4.
+`{{> partial}}` inside a keyed block is not expanded. The block body is compiled once into a `<template>`, before any
+render pass exists to resolve a partial against. Inline it, and the compiler says so if you do not.
+
+There is no `$parents[2]`: `$parent` reaches one level up, and no further.
+
+## Keyed lists
+
+`{{#each items key=id}}` **reconciles**. An item that stays in the collection keeps its DOM nodes and its effects across
+any change to the list, so focus, half-typed input, scroll position, CSS transitions and media playback all survive.
+
+```javascript
+const data = {rows: [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}]};
+
+const controller = compile(
+    '<ul>{{#each rows key=id}}<li>{{$index}}: {{name}}</li>{{/each}}</ul>',
+    data, host
+);
+
+data.rows = [{id: 3, name: 'Katherine'}, ...data.rows];
+controller.updateAll(data);
+//  Ada's <li> is the same node object it was before. It was moved, not rebuilt.
+```
+
+`key=` names the property that identifies an item; a dotted path (`key=meta.ref`) works too. It must be an identity, not
+a value — a key that changes when the item's *contents* change defeats the whole mechanism.
+
+**Without `key=` the block falls back to re-rendering wholesale** and says so once, naming the template. That is the
+Tier 3 behaviour every template written before this milestone relies on, so nothing breaks; it simply costs you node
+identity. Pass `{warnUnkeyed: false}` in the compiler options to silence it.
+
+### What works inside a keyed block
+
+Everything. Each item gets its own binding context and its own effects:
+
+```html
+{{#each rows key=id}}
+    <li data-bind-class="done && 'complete'">
+        <input data-model="title">
+        <button data-on-click="$root.remove">×</button>
+        {{#if note}}<small>{{note}}</small>{{/if}}
+        {{#each tags key=id}}<span>{{$parent.title}}/{{name}}</span>{{/each}}
+    </li>
+{{/each}}
+```
+
+An event binding's `this` is `$data` — the item — so `$root.remove` above receives the row it was clicked on as `this`.
+
+The renderer's loop variables (`{{.}}`, `{{@index}}`, `{{@first}}`, `{{@last}}`) resolve inside a keyed block too, so
+adding `key=` to an existing block never silently blanks anything.
+
+### One place `key=` is refused
+
+A keyed block **inside an unkeyed `{{#each}}` or a `{{#with}}`** is demoted to an ordinary re-rendered block, with a
+warning. Its collection expression would otherwise be evaluated against the top-level data, where the name means
+nothing, and the list would render empty on a page that looks finished.
+
+Add `key=` to the *enclosing* block and both reconcile — nesting keyed lists inside keyed lists is fully supported, to
+any depth.
+
+### Lifecycle
+
+Each item is an *instance*: a pair of comment anchors, the nodes between them, a context, and one effect per binding.
+An instance is disposed — **effects first, then nodes** — when its key leaves the collection, when an enclosing region
+re-renders over it, or when the controller is destroyed.
+
+**Call `controller.destroy()`.** A list's effects are live nodes in the dependency graph and dropping the DOM does not
+drop them.
+
+### Deferred: minimal moves
+
+Placement is **in order**. That is correct for append, prepend, insert, remove and reorder, and it performs more DOM
+moves than strictly necessary — reversing n items costs n moves rather than n-1, and dragging one item from the end to
+the front costs n rather than 1. The refinement is longest-increasing-subsequence move minimisation. Nothing about
+correctness or node identity depends on it: an instance that is moved is the same instance, with the same nodes and the
+same effects.
+
+## `applyBindings(data, rootElement)`
+
+The other direction from `compile()`. Point it at HTML that already exists — server-rendered, hand-written, whatever —
+and it activates the binding attributes in place, leaving the markup otherwise as it found it. No build step, no second
+source of truth for the markup.
+
+```html
+<div id="app">
+    <h1 data-bind-text="title">Rendered by the server</h1>
+    <button data-on-click="save">Save</button>
+    <input data-model="query" value="rendered by the server">
+    <p data-if="showHelp">Help text.</p>
+    <ul data-each="rows key=id">
+        <li data-bind-text="name">template row</li>
+    </ul>
+</div>
+```
+
+```javascript
+import {applyBindings, observable, observableArray} from 'domma-reactive';
+
+const handle = applyBindings({
+    title: 'Live',
+    query: observable(''),
+    showHelp: false,
+    rows: observableArray([{id: 1, name: 'Ada'}]),
+    save() { /* … */ }
+}, document.querySelector('#app'));
+```
+
+Every binding gets its own effect, so a view model built from observables updates itself. For a plain, untracked object,
+`handle.update(data)` re-runs everything.
+
+| | |
+|---|---|
+| **Returns** | `{bindings, context(), update(data), dispose()}` |
+| **Idempotent** | applying twice skips elements already bound and warns once, naming the root |
+| **Disposable** | `dispose()` drops every effect, listener, list instance and marker it created, restores a hidden `data-if` element, and leaves the markup as it was found |
+
+### `{{ }}` in already-rendered DOM is not interpolated
+
+Deliberately, and it says so once if it finds a token that looks like a binding.
+
+There is nothing coherent to do with it. Either the server rendered the value — in which case the token is gone and
+there is only text that happens to say "Ada" — or the server emitted the raw token, in which case the page was broken
+until JavaScript ran, which is the thing server rendering exists to avoid. Guessing which text nodes are dynamic is not
+possible, and rewriting every text node into anchored spans would mutate, destructively, the markup this function
+promises to leave alone.
+
+`data-bind-text="expr"` is the supported spelling. It is explicit, greppable, and the server can render the text and the
+attribute together.
+
+The one exception is the contents of a `data-each`, which are a *template* rather than rendered output: they are lifted
+out of the document, compiled and cloned per item, so mustache works there because there it means something.
+
+### `data-if` here detaches; in a template it re-renders
+
+`applyBindings` implements `data-if` by removing the element and putting **the same node** back, so it keeps its
+children, its listeners and its focus across a toggle. `compile()` cannot do that — while an element is detached, the
+bindings inside it are invisible to re-indexing, so it would come back stale — and re-renders its region instead. This
+is the one place the two entry points differ in behaviour rather than in input.
+
+A custom binding declaring `region: true` is refused by `applyBindings`, with an explanation: a region handler
+re-renders from a captured template body, and here the markup *is* the page.
 
 ## The renderer
 

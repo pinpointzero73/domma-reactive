@@ -1,5 +1,5 @@
 /**
- * Binding context — `$data`, `$root`, `$parent`, `$index`.
+ * Binding context — `$data`, `$root`, `$parent`, `$index`, `$length`.
  *
  * An expression in a template is evaluated against a *context*, not against a
  * data object. The difference matters as soon as a template has a list in it:
@@ -43,13 +43,25 @@
  */
 
 /**
- * The four names an expression may use that do not come from `$data`.
+ * The names an expression may use that do not come from `$data`.
  *
  * Exported because both the evaluator (which must resolve them from the context
  * rather than the data) and the binding layer (which must refuse to *write*
  * through them) need the same list, and two lists would drift.
+ *
+ * ── $length, the fifth name, added in M4 ─────────────────────────────────────
+ *
+ * Design spec §5 fixes four. This is the fifth, and it is here for one concrete
+ * reason: `{{@last}}` inside a keyed `{{#each}}`. `@index` and `@first` are
+ * answerable from `$index` alone; "am I the last one?" is not answerable without
+ * knowing how many there are, and the alternative — leaving `{{@last}}` silently
+ * empty inside a keyed block while it works inside an unkeyed one — would be a
+ * trap set by the very feature meant to be the upgrade.
+ *
+ * It is `null` outside a list, exactly as `$index` is, so the §5 rule that every
+ * context name resolves everywhere still holds.
  */
-export const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index']);
+export const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index', '$length']);
 
 /**
  * The top-level context for a data object.
@@ -58,10 +70,13 @@ export const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index']);
  * same thing — and both of the block-only names are null.
  *
  * @param {*} data
- * @returns {{$data: *, $root: *, $parent: null, $index: null}} frozen
+ * @returns {{$data: *, $root: *, $parent: null, $index: null,
+ *            $length: null}} frozen
  */
 export function createRootContext(data) {
-    return Object.freeze({$data: data, $root: data, $parent: null, $index: null});
+    return Object.freeze({
+        $data: data, $root: data, $parent: null, $index: null, $length: null
+    });
 }
 
 /**
@@ -78,15 +93,18 @@ export function createRootContext(data) {
  * @param {Object|*} parent  the enclosing context, or plain data
  * @param {*}        data    the data this context resolves names against
  * @param {number|null} [index]  position within a list, or null outside one
- * @returns {{$data: *, $root: *, $parent: *, $index: number|null}} frozen
+ * @param {number|null} [length] size of the enclosing list, or null outside one
+ * @returns {{$data: *, $root: *, $parent: *, $index: number|null,
+ *            $length: number|null}} frozen
  */
-export function createChildContext(parent, data, index = null) {
+export function createChildContext(parent, data, index = null, length = null) {
     const base = toContext(parent);
     return Object.freeze({
         $data: data,
         $root: base.$root,
         $parent: base.$data,
-        $index: index === undefined ? null : index
+        $index: index === undefined ? null : index,
+        $length: length === undefined ? null : length
     });
 }
 

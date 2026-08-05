@@ -4,22 +4,23 @@
  * Compiles a mustache template into a set of *fine-grained* bindings, each of
  * which owns a small piece of the DOM and can be updated independently.
  *
- * Eight binding kinds, four from mustache syntax and four from attributes:
+ * Nine binding kinds, five from mustache syntax and four from attributes:
  *
  *   text   {{name}}                  → a <span> anchor; updated via textContent
  *   attr   class="{{cls}}"           → the owning element; updated via setAttribute
  *   block  {{#if x}}…{{/if}}         → a comment-delimited region; re-rendered in place
  *   raw    {{{html}}}                → a comment-delimited region; re-rendered in place
+ *   each   {{#each xs key=id}}…      → a comment-delimited region; RECONCILED per item
  *
  *   event  data-on-click="save"      → an event listener
  *   bind   data-bind-text="name"     → a property, attribute or class
  *   model  data-model="query"        → two-way, control ↔ data
  *   if     data-if="isOpen"          → the element is in the DOM, or it is not
  *
- * None of those eight is special to this file. Every one is a handler in the
+ * None of those nine is special to this file. Every one is a handler in the
  * registry in handlers.js, registered through the same public `registerBinding()`
  * a consumer calls; this module finds them in the template, prepares what they
- * need, and dispatches. Adding a ninth is a `registerBinding()` call with an
+ * need, and dispatches. Adding a tenth is a `registerBinding()` call with an
  * `attribute` on it and no change here.
  *
  * Every binding declares which root fields it depends on, so the caller can wire
@@ -31,14 +32,22 @@
  * nodes until their enclosing block renders them, at which point re-indexing
  * re-attaches them by id.
  *
- * Context-shifting blocks ({{#each}} and {{#with}}) evaluate their bodies against
- * a different data object, so bindings inside them are deliberately NOT bound
- * independently — they are refreshed when the enclosing block re-renders. Binding
- * them to root fields would resolve the wrong values. THIS IS THE M4 SEAM: the
- * reconciler is what gives each item its own child context, and until it exists a
- * per-item binding has nowhere correct to resolve against. Behaviour bindings
- * inside such a block warn rather than failing silently, because a click handler
- * that is quietly not wired is worse than one that says so.
+ * ── Two kinds of {{#each}} ───────────────────────────────────────────────────
+ *
+ * A KEYED block — `{{#each rows key=id}}` — is removed from the annotated
+ * template entirely. Its body is compiled separately into a cloneable
+ * `<template>` (see `buildFactory`), and the reconciler clones one instance per
+ * item, each with its own binding context and its own effects. Everything works
+ * inside one: text, attributes, events, two-way binding, nested blocks, nested
+ * keyed blocks.
+ *
+ * An UNKEYED block, and `{{#with}}`, evaluate their bodies against a different
+ * data object with no per-item identity to hang anything on, so bindings inside
+ * them are deliberately NOT bound independently — they are refreshed when the
+ * enclosing block re-renders, exactly as they were before M4. Binding them to
+ * root fields would resolve the wrong values. Behaviour bindings inside such a
+ * block warn rather than failing silently, because a click handler that is
+ * quietly not wired is worse than one that says so.
  *
  * ── Trust model ──────────────────────────────────────────────────────────────
  * Templates are author-written source, not user input. All interpolated DATA is
@@ -51,7 +60,14 @@
 import {toContext} from './context.js';
 import {compileExpression, expressionDependencies, parseExpression} from './expression.js';
 import {bindingHandler, claimAttribute} from './handlers.js';
+import {
+    ANCHOR_CLOSE,
+    ANCHOR_OPEN,
+    parseFragment
+} from './nodes.js';
 import {EXPRESSION_HINT, render as defaultRender} from './render.js';
+import {registerEachHandler} from './reconciler.js';
+import {createRuntime} from './runtime.js';
 
 const PREFIX = '[Domma Reactive]';
 
@@ -65,6 +81,9 @@ const TRIPLE = /\{\{\{\s*([^{}]+?)\s*\}\}\}/g;
 
 /** Simple interpolation: {{name}} — not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
 const INTERP = /\{\{(?!\{)\s*([^#/>!{}][^{}]*?)\s*\}\}/g;
+
+/** Partial reference: {{> name}} */
+const PARTIAL = /\{\{>\s*[^{}]+?\s*\}\}/;
 
 /** Opening HTML tag, tolerating quoted attribute values that contain > */
 const OPEN_TAG = /<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
@@ -87,12 +106,27 @@ const SIMPLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/;
 /** Forms owned by the renderer, never by the expression parser. */
 const RENDERER_FORM = /^[@.]/;
 
-const ANCHOR_OPEN = (id) => `<!--dm:${id}-->`;
-const ANCHOR_CLOSE = (id) => `<!--/dm:${id}-->`;
-
-/** Marker attributes, in the order a node is checked against them. */
-const MARKER_ATTRS = ['data-dm-t', 'data-dm-a', 'data-dm-b'];
-const MARKER_SELECTOR = MARKER_ATTRS.map((name) => `[${name}]`).join(',');
+/**
+ * The renderer's loop variables, re-expressed against a binding context.
+ *
+ * Inside an UNKEYED `{{#each}}` these are substituted by the renderer, which
+ * builds a per-item data object containing `@index`, `@first`, `@last` and `.`.
+ * A keyed block has no render pass over its items — that is the point of it —
+ * so the same four forms have to come from the context instead. Without this,
+ * `{{@index}}` would work in a block and silently vanish the moment its author
+ * added `key=`, which is precisely the trap a new feature must not set.
+ *
+ * They are only recognised when the compiler is told it is compiling an item
+ * body (`options.itemForms`). At the top level `{{@index}}` means nothing, and
+ * binding it to a null `$index` would print an empty span where the renderer
+ * currently prints the literal text.
+ */
+const ITEM_FORMS = {
+    '.': (context) => context.$data,
+    '@index': (context) => context.$index,
+    '@first': (context) => context.$index === 0,
+    '@last': (context) => context.$length !== null && context.$index === context.$length - 1
+};
 
 /** Elements the HTML parser closes for you, so they have no matching end tag. */
 const VOID_ELEMENTS = new Set([
@@ -103,25 +137,6 @@ const VOID_ELEMENTS = new Set([
 /** Legacy id suffixes. Changing these would change the markup Domma renders. */
 const ID_SUFFIX = {text: 'txt', attr: 'attr', raw: 'raw', block: 'blk'};
 
-// ── The single HTML parse site ────────────────────────────────────────────────
-
-/**
- * Parse a rendered template string into a DocumentFragment.
- *
- * This is the ONLY place this module converts a string into DOM. See the trust
- * model note at the top of the file. A <template> element is used (rather than
- * DOMParser) because it parses context-sensitive tags such as <tr>, <td>,
- * <option> and <li> correctly at the top level.
- *
- * @param {string} html
- * @returns {DocumentFragment}
- */
-function parseFragment(html) {
-    const tpl = document.createElement('template');
-    tpl.innerHTML = html;
-    return tpl.content;
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Edit ordering for insertions that land on the same index. */
@@ -129,15 +144,22 @@ const CLOSING = 0;
 const OPENING = 1;
 
 /**
- * Apply a list of {index, text, order} insertions.
+ * Apply a list of {index, text, order, skip} edits.
  *
  * Ties matter: adjacent interpolations such as `{{a}}{{b}}` put a's closing tag
  * and b's opening tag at the same index. Closing edits are emitted before
  * opening ones so the result nests correctly (`</span><span …>`) rather than
  * interleaving.
  *
+ * `skip` DELETES that many characters after the insertion point, which is how a
+ * keyed `{{#each}}` removes itself from the annotated template — its body is
+ * compiled separately into a cloneable <template>, and leaving the mustache
+ * source behind would have the renderer paint a second, unmanaged copy of the
+ * list before the reconciler ever ran. Edits falling inside a deleted range are
+ * dropped, so a caller cannot half-annotate something it has just removed.
+ *
  * @param {string} source
- * @param {Array<{index:number,text:string,order:number}>} edits
+ * @param {Array<{index:number,text:string,order:number,skip:number}>} edits
  * @returns {string}
  */
 function insertAll(source, edits) {
@@ -150,8 +172,9 @@ function insertAll(source, edits) {
     let out = '';
     let cursor = 0;
     for (const edit of sorted) {
+        if (edit.index < cursor) continue;
         out += source.slice(cursor, edit.index) + edit.text;
-        cursor = edit.index;
+        cursor = edit.index + (edit.skip ?? 0);
     }
     return out + source.slice(cursor);
 }
@@ -328,6 +351,245 @@ function shiftingRanges(annotated, regions) {
     return ranges;
 }
 
+// ── Keyed blocks ──────────────────────────────────────────────────────────────
+
+/**
+ * `{{#each items key=id}}` → the collection expression and the key property.
+ *
+ * `key=` is what turns a block from "re-render the lot" into "reconcile". Design
+ * spec §5 makes it required for reconciliation and makes its absence a warning
+ * rather than an error, so every template written before M4 keeps working
+ * exactly as it did.
+ *
+ * The key must be a path — a property of the item. Not an expression: a key is
+ * an identity, it is read once per item per reconcile, and letting it be
+ * `a + b` would invite keys that change when the item's *contents* change, which
+ * is the one thing a key must never do.
+ */
+const KEYED = /^([\s\S]*?)\s+key\s*=\s*([A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*$/;
+
+/** The `key=…` part of an opening token, for stripping it back out again. */
+const KEY_SEGMENT = /\s+key\s*=\s*[A-Za-z_$][\w$]*(?:\.[\w$]+)*/;
+
+/** Templates already warned about an unkeyed {{#each}}. Once per session. */
+const warnedUnkeyed = new Set();
+
+/**
+ * Split `items key=id` into its two halves, or null for an unkeyed block.
+ *
+ * @param {string} expr the whole `{{#each …}}` expression
+ * @returns {{collection: string, key: string}|null}
+ */
+function parseKeyed(expr) {
+    const m = KEYED.exec(String(expr));
+    if (m === null || m[1].trim() === '') return null;
+    return {collection: m[1].trim(), key: m[2]};
+}
+
+/**
+ * The opening and closing token lengths of a block, so its body can be sliced.
+ *
+ * `scanBlocks` reports where a block starts and ends, not where its *body* does.
+ * Recovering that by assuming `{{#each x}}` is a fixed width would break on
+ * `{{#each  x  }}`, so the tokens are re-matched.
+ *
+ * @returns {[number, number]} [bodyStart, bodyEnd] absolute in `source`
+ */
+function bodyRange(source, block) {
+    const open = /^\{\{#(?:if|unless|each|with)(?:\s+[^}]*?)?\s*\}\}/.exec(
+        source.slice(block.start, block.end)
+    );
+    const close = /\{\{\/(?:if|unless|each|with)\s*\}\}$/.exec(
+        source.slice(block.start, block.end)
+    );
+    if (open === null || close === null) return [block.start, block.end];
+    return [block.start + open[0].length, block.start + close.index];
+}
+
+/**
+ * Strip an annotated template down to a cloneable skeleton.
+ *
+ * This is the piece design spec §6 calls "the significant architectural shift".
+ * A block body used to be re-rendered to a string per item; now it is parsed
+ * ONCE into a `<template>` and cloned, which is what makes a per-item binding
+ * possible at all — a binding needs a node, and a string has none.
+ *
+ * Two things come out:
+ *
+ *   region bodies    emptied. A region's handler re-renders its own contents
+ *                    from `binding.body`; leaving the source in the skeleton
+ *                    would paint it once, unbound, before the handler ran.
+ *   `{{ }}` tokens   removed. There is no render pass over an instance, so a
+ *                    token left in place would sit in the DOM as literal text
+ *                    until — and only if — something happened to update it.
+ *                    Every one of them has a binding that fills it on
+ *                    instantiation, which is why the skeleton can be blank.
+ *
+ * @param {string} annotated
+ * @param {Array<Object>} bindings
+ * @returns {string}
+ */
+function toSkeleton(annotated, bindings) {
+    const ranges = [];
+
+    for (const b of bindings) {
+        if (bindingHandler(b.kind)?.capturesBody !== true) continue;
+        const openTag = ANCHOR_OPEN(b.id);
+        const start = annotated.indexOf(openTag);
+        const end = annotated.indexOf(ANCHOR_CLOSE(b.id));
+        if (start === -1 || end === -1) continue;
+        ranges.push([start + openTag.length, end]);
+    }
+
+    ranges.sort((a, b) => a[0] - b[0]);
+
+    let out = '';
+    let cursor = 0;
+    for (const [start, end] of ranges) {
+        // Nested inside a region already emptied — it went with its parent.
+        if (start < cursor) continue;
+        out += annotated.slice(cursor, start);
+        cursor = end;
+    }
+    out += annotated.slice(cursor);
+
+    return out.replace(/\{\{\{[^{}]*\}\}\}/g, '').replace(/\{\{[^{}]*\}\}/g, '');
+}
+
+/**
+ * Compile a keyed block body into a factory the reconciler can clone from.
+ *
+ * Built lazily, on the block's first update, for one reason: `annotate()` is
+ * string-only and documented as DOM-free, and a `<template>` element is not.
+ * Deferring keeps that promise — a consumer can annotate a template in Node and
+ * only pays for a `document` when something actually renders.
+ *
+ * @param {Object} binding  the `each` binding, carrying the raw body
+ * @param {Function} render
+ * @param {Object} options
+ * @returns {Object} factory: {content, bindings, render, label, usesLength}
+ */
+/**
+ * Everything about an item that changes when it MOVES rather than when it
+ * changes.
+ *
+ * An instance whose index shifted — because something was inserted above it —
+ * needs the bindings that render its position re-run, and nothing else. Without
+ * this distinction a prepend re-runs every binding of every item below it, and
+ * a `data-model` input in the list writes its stored value back over whatever
+ * the user was in the middle of typing.
+ */
+const POSITIONAL = /\$index|\$length|@index|@first|@last/;
+
+/** Every piece of template source a binding might read a position from. */
+function sourceOf(binding) {
+    const parts = (binding.parts ?? []).map((p) => p.tmpl).join(' ');
+    return `${binding.expr ?? ''} ${binding.body ?? ''} ${parts}`;
+}
+
+let factorySeq = 0;
+
+function buildFactory(binding, render, options) {
+    const label = `${options.template ? `${options.template} ` : ''}{{#each ${binding.expr}}}`;
+    const {annotated, bindings} = annotate(binding.body, {
+        ...options,
+        itemForms: true,
+        template: label,
+        idPrefix: `i${++factorySeq}:`
+    });
+
+    if (PARTIAL.test(binding.body)) {
+        console.warn(
+            `${PREFIX} {{> partial}} inside a keyed {{#each}} is not expanded — ` +
+            `the block body is compiled once into a <template>, before any render ` +
+            `pass exists to resolve a partial against. Inline it, in ${label}`
+        );
+    }
+
+    for (const b of bindings) b.positional = POSITIONAL.test(sourceOf(b));
+
+    return {
+        content: parseFragment(toSkeleton(annotated, bindings)),
+        bindings,
+        render,
+        label,
+        options,
+        /*
+         * Whether an item's rendering can depend on how many items there are.
+         * A push changes `$length` for every existing item, so without this
+         * every instance in the list would be refreshed on every append — the
+         * exact O(n) the reconciler exists to avoid. A source scan rather than
+         * an AST walk because `@last` is a renderer form that never reaches the
+         * parser, so there is no one AST to interrogate.
+         */
+        usesLength: /@last|\$length/.test(binding.body)
+    };
+}
+
+/**
+ * Say once, per template, that an `{{#each}}` is re-rendering rather than
+ * reconciling.
+ *
+ * Design spec §5 requires this: "without it the block falls back to Tier 3
+ * behaviour (full re-render) and logs a one-time console warning naming the
+ * template, so the degradation is visible rather than silent."
+ *
+ * It is deliberately once per (template, expression) for the whole session, not
+ * once per compile. A component re-renders; a warning that came back on every
+ * render would be noise, and noise is how a real warning gets ignored.
+ *
+ * @param {string} expr
+ * @param {Object} options
+ */
+function warnUnkeyed(expr, options) {
+    if (options.warnUnkeyed === false) return;
+
+    const key = `${options.template ?? ''}|${expr}`;
+    if (warnedUnkeyed.has(key)) return;
+    warnedUnkeyed.add(key);
+
+    const where = options.template ? ` in template "${options.template}"` : '';
+    console.warn(
+        `${PREFIX} {{#each ${expr}}}${where} has no key=, so it re-renders the whole ` +
+        `block on every change — losing DOM node identity, focus and uncommitted ` +
+        `input. Write {{#each ${expr} key=id}}, naming whichever property identifies ` +
+        `an item, to reconcile instead.`
+    );
+}
+
+/**
+ * Say once that a keyed block could not be keyed after all.
+ *
+ * @param {string} expr
+ * @param {Object} options
+ */
+function warnDemoted(expr, options) {
+    const key = `demoted|${options.template ?? ''}|${expr}`;
+    if (warnedUnkeyed.has(key)) return;
+    warnedUnkeyed.add(key);
+
+    const where = options.template ? ` in template "${options.template}"` : '';
+    console.warn(
+        `${PREFIX} {{#each ${expr}}}${where} sits inside an unkeyed {{#each}} or a ` +
+        `{{#with}}, so it cannot reconcile: its collection would be resolved against ` +
+        `the top-level data. It has been demoted to a plain re-rendered block. Add ` +
+        `key= to the ENCLOSING block and both will reconcile.`
+    );
+}
+
+/** For tests: forget which templates have already been warned about. */
+export function resetUnkeyedWarnings() {
+    warnedUnkeyed.clear();
+}
+
+/** Exposed for the `each` handler, which owns instantiation but not templates. */
+export function eachFactory(binding, render) {
+    if (binding.factoryBox.value === null) {
+        binding.factoryBox.value = buildFactory(binding, render, binding.factoryBox.options);
+    }
+    return binding.factoryBox.value;
+}
+
 /**
  * Prepare the expression half of a binding: its AST, its evaluator, its deps.
  *
@@ -361,6 +623,16 @@ export function annotate(rawTemplate, options = {}) {
     const bindings = [];
     const warnedHere = new Set();
 
+    /*
+     * Ids are namespaced per compiled template, and a keyed block body is a
+     * compiled template of its own. Without this, an instance's `0_blk` and the
+     * enclosing template's `0_blk` are the same string, and the enclosing
+     * runtime — which walks every node beneath it, instance content included —
+     * would happily hand an item's nodes to a binding belonging to the page.
+     * Empty by default, so the markup Domma renders is unchanged.
+     */
+    const prefix = options.idPrefix ?? '';
+
     const warn = (key, message) => {
         if (warnedHere.has(key)) return;
         warnedHere.add(key);
@@ -379,13 +651,94 @@ export function annotate(rawTemplate, options = {}) {
     // renders is unchanged by this pass gaining a second source of regions.
     const blocks = scanBlocks(rawTemplate);
     const regionElements = scanRegionElements(rawTemplate);
+
+    // A keyed {{#each}} owns its body outright: the body is compiled separately
+    // into a cloneable <template>, and everything inside it belongs to the
+    // instance rather than to this template. So the block is REMOVED from the
+    // annotated source, and every region that fell inside it is dropped here —
+    // annotating markup that is about to be deleted would leave orphan anchors
+    // and bindings that could never acquire a node.
+    const keyedRanges = [];
+    const demoted = new Set();
+
+    /*
+     * A keyed block inside an UNKEYED {{#each}} or a {{#with}} cannot reconcile.
+     * Its collection expression would be evaluated against the top-level data,
+     * where the name means nothing, and the list would render EMPTY — the worst
+     * of the three possible outcomes, because the page looks finished. So it is
+     * demoted to an ordinary block: the `key=` is stripped from its opening
+     * token, the enclosing block re-renders it as a string like every other
+     * nested block, and it says why.
+     *
+     * A keyed block inside a KEYED one is a different matter entirely and is
+     * fully supported — it is compiled as part of the outer block's item body,
+     * which is why those are filtered out here rather than demoted.
+     */
+    const shifting = blocks
+        .filter((b) => b.kind === 'with' || (b.kind === 'each' && parseKeyed(b.expr) === null))
+        .map((b) => [b.start, b.end]);
+
+    for (const b of blocks) {
+        if (b.kind !== 'each' || parseKeyed(b.expr) === null) continue;
+
+        if (shifting.some(([ss, se]) => b.start > ss && b.end <= se)) {
+            demoted.add(b.start);
+            warnDemoted(b.expr, options);
+            continue;
+        }
+        keyedRanges.push([b.start, b.end]);
+    }
+
+    const insideKeyed = (start, end) =>
+        keyedRanges.some(([ks, ke]) => start > ks && end <= ke);
+
     const regions = [
-        ...blocks.map((b, i) => ({...b, id: `${i}_blk`, mustache: true})),
-        ...regionElements.map((r, i) => ({...r, id: `${blocks.length + i}_${r.kind}`}))
+        ...blocks
+            .map((b, i) => ({...b, id: `${prefix}${i}_blk`, mustache: true}))
+            .filter((b) => !insideKeyed(b.start, b.end)),
+        ...regionElements
+            .map((r, i) => ({...r, id: `${prefix}${blocks.length + i}_${r.kind}`}))
+            .filter((r) => !insideKeyed(r.start, r.end))
     ];
 
     const regionEdits = [];
     for (const region of regions) {
+        if (region.mustache && demoted.has(region.start)) {
+            // Strip `key=…` from the opening token, so the renderer sees an
+            // ordinary {{#each rows}} rather than an expression it cannot parse.
+            const token = rawTemplate.slice(region.start, region.end);
+            const keyPart = KEY_SEGMENT.exec(token);
+            if (keyPart !== null) {
+                regionEdits.push({
+                    index: region.start + keyPart.index,
+                    text: '',
+                    order: OPENING,
+                    skip: keyPart[0].length
+                });
+            }
+            region.expr = parseKeyed(region.expr)?.collection ?? region.expr;
+        }
+
+        const keyed = region.mustache
+            && region.kind === 'each'
+            && !demoted.has(region.start)
+            && parseKeyed(region.expr);
+        if (keyed) {
+            // Anchors only, and the source between them deleted.
+            regionEdits.push({
+                index: region.start,
+                text: ANCHOR_OPEN(region.id) + ANCHOR_CLOSE(region.id),
+                order: OPENING,
+                skip: region.end - region.start
+            });
+            region.keyed = keyed;
+            const [bodyStart, bodyEnd] = bodyRange(rawTemplate, region);
+            region.rawBody = rawTemplate.slice(bodyStart, bodyEnd);
+            continue;
+        }
+
+        if (region.mustache && region.kind === 'each') warnUnkeyed(region.expr, options);
+
         regionEdits.push({index: region.start, text: ANCHOR_OPEN(region.id), order: OPENING});
         regionEdits.push({index: region.end, text: ANCHOR_CLOSE(region.id), order: CLOSING});
     }
@@ -393,13 +746,43 @@ export function annotate(rawTemplate, options = {}) {
     let annotated = insertAll(rawTemplate, regionEdits);
 
     let counter = regions.length;
-    const nextId = (kind) => `${counter++}_${ID_SUFFIX[kind] ?? kind}`;
+    const nextId = (kind) => `${prefix}${counter++}_${ID_SUFFIX[kind] ?? kind}`;
 
     // Register a binding per region. `body` is filled in at the very end, once
     // every pass has inserted its anchors — a region that re-renders must
     // reproduce the text, attribute and nested-region anchors inside it.
     for (const region of regions) {
         if (annotated.indexOf(ANCHOR_OPEN(region.id)) === -1) continue;
+
+        if (region.keyed) {
+            const handler = bindingHandler('each');
+            const prepared = prepareExpression(region.keyed.collection, handler, options);
+            if (prepared === null) continue;
+
+            bindings.push({
+                id: region.id,
+                kind: 'each',
+                blockKind: 'each',
+                expr: region.keyed.collection,
+                keyPath: region.keyed.key,
+                body: region.rawBody,
+                ast: prepared.ast,
+                evaluate: prepared.evaluate,
+                deps: prepared.deps,
+                prime: handler.primes === true,
+                /*
+                 * A shared box rather than a plain field. A list instance
+                 * shallow-copies every binding record it owns, so a factory
+                 * cached on the record itself would be rebuilt — parsed,
+                 * annotated, skeletonised — once per instance of an enclosing
+                 * list. The box survives the copy; the compiled template is
+                 * built once per template, as §6 requires.
+                 */
+                factoryBox: {value: null, options},
+                nodes: null
+            });
+            continue;
+        }
 
         if (region.mustache) {
             bindings.push({
@@ -601,7 +984,34 @@ export function annotate(rawTemplate, options = {}) {
  *                      leaves them alone, exactly as it did before.
  */
 function textBinding(expr, options, warn) {
+    if (options.itemForms === true && ITEM_FORMS[expr] !== undefined) {
+        return {
+            kind: 'text',
+            expr,
+            evaluate: ITEM_FORMS[expr],
+            deps: new Set(),
+            prime: true
+        };
+    }
+
     if (SIMPLE_PATH.test(expr)) {
+        // A path through a context name is not a path through $data. Walking
+        // keys from `$data` for `{{$root.title}}` looks for a field called
+        // "$root" on the item and finds nothing — the evaluator is the only
+        // thing that knows $root, $parent, $index and $length are not data.
+        if (expr.startsWith('$')) {
+            const prepared = prepareExpression(expr, bindingHandler('text'), options);
+            if (prepared === null) return null;
+            return {
+                kind: 'text',
+                expr,
+                ast: prepared.ast,
+                evaluate: prepared.evaluate,
+                deps: prepared.deps,
+                prime: true
+            };
+        }
+
         return {
             kind: 'text',
             expr,
@@ -642,279 +1052,50 @@ function textBinding(expr, options, warn) {
  *                                     with no template engine supplied.
  * @param {Object}   [options]
  * @param {string}   [options.template] a name for this template, used in warnings
+ * @param {boolean}  [options.reactive] own one effect per binding, so the DOM
+ *                                     follows the data with no caller involved.
+ *                                     OFF by default: Domma wires its own
+ *                                     effects from `binding.deps` and calls
+ *                                     `update()` inside `untracked()`, and two
+ *                                     effects per binding would be one too many.
+ *                                     A standalone consumer almost certainly
+ *                                     wants it on. Note that list *instances*
+ *                                     always own their effects either way —
+ *                                     see runtime.js.
  * @returns {Object} BindingController
  */
 export function compile(rawTemplate, data, contentContainer, renderFn, options = {}) {
     const render = typeof renderFn === 'function' ? renderFn : defaultRender;
     const {annotated, bindings} = annotate(rawTemplate, options);
-    const byId = new Map(bindings.map(b => [b.id, b]));
-
-    /**
-     * Nodes this binding has already been settled against — attached to, and
-     * primed on. A WeakSet keyed by node rather than a count, because a region
-     * re-render replaces its contents with brand new elements and the binding
-     * must treat those as new even though there are the same number of them.
-     */
-    for (const b of bindings) b.seen = new WeakSet();
-
-    /** Bindings that have acquired a node and must be primed against it. */
-    let pending = [];
-
-    /** True while the settle loop below is draining `pending`. */
-    let settling = false;
-
-    /**
-     * Convergence bound for the settle loop below.
-     *
-     * Each round only queues bindings that saw a node they had not seen before,
-     * so rounds are bounded by template nesting depth and twenty is far past
-     * anything real. Being honest about what the loop is for: for every
-     * built-in binding, one round suffices, because a region's re-render
-     * re-indexes before the rest of the round runs and so refreshes the nodes
-     * of everything still queued. The loop exists for a CUSTOM region binding
-     * whose update reveals anchors that were not in the document at all — the
-     * one case a single pass cannot reach — and to guarantee termination if one
-     * ever fails to converge.
-     */
-    const MAX_SETTLE_ROUNDS = 20;
-
-    /**
-     * The context every handler resolves against.
-     *
-     * Held on the controller rather than passed in per call because an event
-     * listener fires long after the update that wired it, and has to read
-     * whatever the data is at that moment. Every entry point that receives data
-     * refreshes it.
-     */
-    let context = toContext(data);
 
     /** Render the whole annotated template into the container. */
-    function paint(fullData) {
-        contentContainer.replaceChildren(parseFragment(render(annotated, fullData)));
-    }
-
-    /** Re-attach DOM nodes to bindings by id across the whole container. */
-    function index() {
-        for (const b of bindings) b.nodes = null;
-
-        for (const el of contentContainer.querySelectorAll(MARKER_SELECTOR)) {
-            for (const attrName of MARKER_ATTRS) {
-                const raw = el.getAttribute(attrName);
-                if (raw === null) continue;
-                for (const id of raw.split(/\s+/)) {
-                    const b = byId.get(id);
-                    if (b) (b.nodes ||= []).push(el);
-                }
-            }
-        }
-
-        const walker = document.createTreeWalker(
-            contentContainer, NodeFilter.SHOW_COMMENT, null
-        );
-        const open = new Map();
-        let node;
-        while ((node = walker.nextNode())) {
-            const text = node.data;
-            if (text.startsWith('/dm:')) {
-                const id = text.slice(4);
-                const start = open.get(id);
-                if (!start) continue;
-                const b = byId.get(id);
-                if (b) (b.nodes ||= []).push({open: start, close: node});
-                open.delete(id);
-            } else if (text.startsWith('dm:')) {
-                open.set(text.slice(3), node);
-            }
-        }
-
-        collectNewNodes();
-        settle();
-    }
-
-    /**
-     * Attach handlers to nodes not seen before, and queue the bindings that
-     * must now be primed against them.
-     *
-     * A region's "node" is a pair of comment anchors rather than an element;
-     * the opening anchor is its identity, and it is never attached to — only
-     * element-anchored bindings have listeners.
-     */
-    function collectNewNodes() {
-        for (const b of bindings) {
-            if (b.nodes === null) continue;
-
-            const handler = bindingHandler(b.kind);
-            let fresh = false;
-
-            for (const node of b.nodes) {
-                const key = node.nodeType === undefined ? node.open : node;
-                if (b.seen.has(key)) continue;
-                b.seen.add(key);
-                fresh = true;
-                if (node.nodeType !== undefined) {
-                    handler?.attach?.({binding: b, node, controller});
-                }
-            }
-
-            if (fresh && b.prime === true) pending.push(b);
-        }
-    }
-
-    /**
-     * Prime every binding that the render could not have got right.
-     *
-     * A `{{name}}` is already correct after a paint — the renderer substituted
-     * it. `data-bind-text="name"` is not, because there is no token in an
-     * attribute for a renderer to substitute. Neither is a binding that has
-     * just been REVEALED by a block re-rendering: without this, an
-     * `{{#if editing}}<input data-model="draft">{{/if}}` would come back empty
-     * every time it opened, and would stay empty until `draft` happened to
-     * change. Domma updates one binding at a time, so nothing else would have
-     * filled it in.
-     *
-     * Priming a region replaces its contents, which reveals further bindings —
-     * hence the rounds, which are what make this correct. Regions go first
-     * within a round purely to save work: priming something a region is about
-     * to replace is wasted, and a later round would have to redo it anyway.
-     *
-     * A nested index() (a region re-render calls one) queues into `pending` and
-     * returns; this loop, already running, drains what it queued.
-     */
-    function settle() {
-        if (settling) return;
-        settling = true;
-
-        try {
-            let round = 0;
-            while (pending.length > 0) {
-                if (++round > MAX_SETTLE_ROUNDS) {
-                    console.warn(
-                        `${PREFIX} a binding kept revealing new nodes after ` +
-                        `${MAX_SETTLE_ROUNDS} rounds; giving up so the page still renders. ` +
-                        `Kinds still pending: ${[...new Set(pending.map(b => b.kind))].join(', ')}`
-                    );
-                    break;
-                }
-
-                const batch = pending;
-                pending = [];
-
-                for (const regionsFirst of [true, false]) {
-                    for (const b of batch) {
-                        if ((bindingHandler(b.kind)?.region === true) !== regionsFirst) continue;
-                        controller.update(b.id);
-                    }
-                }
-            }
-        } finally {
-            settling = false;
-            pending = [];
-        }
-    }
-
-    /** Replace everything between a pair of comment anchors. */
-    function replaceRegion(open, close, html) {
-        const parent = open.parentNode;
-        if (!parent) return;
-
-        let node = open.nextSibling;
-        while (node && node !== close) {
-            const next = node.nextSibling;
-            parent.removeChild(node);
-            node = next;
-        }
-
-        if (!html) return;
-        parent.insertBefore(parseFragment(html), close);
-    }
-
-    const controller = {
-        bindings,
-
-        /** Dependencies of a single binding. */
-        deps(id) {
-            return byId.get(id)?.deps || new Set();
-        },
-
-        /**
-         * The binding context in force — what an event listener resolves
-         * against, and what the last call to update/updateAll/rerenderAll left
-         * behind. Handlers reach it through this, never through a captured copy.
-         */
-        context() {
-            return context;
-        },
-
-        /**
-         * Update one binding in place. A binding whose enclosing block is not
-         * currently rendered has no nodes and is skipped.
-         *
-         * @param {string} id
-         * @param {Object} [fullData]  merged data, or a binding context
-         * @returns {boolean} True if anything was written to the DOM
-         */
-        update(id, fullData) {
-            if (fullData !== undefined) context = toContext(fullData);
-
-            const b = byId.get(id);
-            if (!b || !b.nodes || b.nodes.length === 0) return false;
-
-            const handler = bindingHandler(b.kind);
-            if (handler === undefined) return false;
-
-            return handler.update({
-                binding: b,
-                nodes: b.nodes,
-                context,
-                render,
-                replaceRegion,
-                reindex: index,
-                controller
-            }) === true;
-        },
-
-        /** Update every binding (used after a props change). */
-        updateAll(fullData) {
-            if (fullData !== undefined) context = toContext(fullData);
-            for (const b of bindings) controller.update(b.id);
-        },
-
-        /** Full re-render — the escape hatch for props changes. */
-        rerenderAll(fullData) {
-            if (fullData !== undefined) context = toContext(fullData);
-            paint(context.$data);
-            index();
-        },
-
-        /** @deprecated Retained for callers still using the coarse API. */
-        rerender(fullData) {
-            controller.rerenderAll(fullData);
-        },
-
-        /**
-         * Detach everything this controller attached.
-         *
-         * Only listeners on nodes still indexed can be removed; nodes discarded
-         * by a region re-render were collected along with their listeners long
-         * ago. Per-instance lifecycle — disposing effects alongside nodes as a
-         * list churns — is the reconciler's job, and M4's.
-         */
-        destroy() {
-            for (const b of bindings) {
-                const handler = bindingHandler(b.kind);
-                if (handler?.detach === undefined || b.nodes === null) continue;
-                for (const node of b.nodes) {
-                    if (node.nodeType === undefined) continue;
-                    handler.detach({binding: b, node, controller});
-                }
-            }
-        }
+    const paint = (context) => {
+        contentContainer.replaceChildren(parseFragment(render(annotated, context.$data)));
     };
 
-    paint(context.$data);
-    index();
+    const controller = createRuntime({
+        bindings,
+        render,
+        context: toContext(data),
+        getRoots: () => [...contentContainer.childNodes],
+        reactive: options.reactive === true,
+        label: options.template,
+        repaint: paint
+    });
+
+    paint(controller.context());
+    controller.index();
 
     return controller;
 }
+
+/*
+ * Registered here, not in reconciler.js, so the dependency runs one way: this
+ * module knows how to compile a block body into a cloneable factory, and hands
+ * that capability to a reconciler that knows nothing about templates. The
+ * alternative — reconciler.js importing `annotate` — would be a cycle between
+ * the two hardest files in the package.
+ */
+registerEachHandler(eachFactory);
 
 export const TemplateCompiler = {annotate, compile, scanBlocks, resolvePath};

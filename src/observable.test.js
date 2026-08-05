@@ -1,7 +1,7 @@
 // src/observable.test.js
 import {describe, expect, it, vi} from 'vitest';
-import {observable} from './observable.js';
-import {computed, effect} from './graph.js';
+import {observable, observableArray} from './observable.js';
+import {computed, effect, flushSync, liveComputations} from './graph.js';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -177,5 +177,222 @@ describe('observable', () => {
         v.value = 5;
         expect(doubled.get()).toBe(2);           // peek registered nothing
         expect(body).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ── subscribe ─────────────────────────────────────────────────────────────────
+
+describe('observable.subscribe', () => {
+    it('fires synchronously at the write, with no flush', () => {
+        const count = observable(1);
+        const seen = [];
+
+        count.subscribe((value) => seen.push(value));
+        count.value = 2;
+
+        // No flushSync() — a subscription is a notification about a write, not
+        // a recomputation of a graph.
+        expect(seen).toEqual([2]);
+    });
+
+    it('does not fire on creation', () => {
+        const count = observable(1);
+        const seen = [];
+
+        count.subscribe((value) => seen.push(value));
+
+        expect(seen).toEqual([]);
+    });
+
+    it('fires for set() as well as for .value', () => {
+        const count = observable(1);
+        const seen = [];
+
+        count.subscribe((value) => seen.push(value));
+        count.set(5);
+
+        expect(seen).toEqual([5]);
+    });
+
+    it('follows the change gate: an equal write notifies nobody', () => {
+        const point = observable({x: 1});
+        const seen = [];
+
+        point.subscribe((value) => seen.push(value));
+        point.value = {x: 1};
+        expect(seen).toEqual([]);
+
+        point.value = {x: 2};
+        expect(seen).toHaveLength(1);
+    });
+
+    it('honours a custom comparator, exactly as the graph does', () => {
+        const row = observable({id: 1, at: 'a'}, {equals: (a, b) => a?.id === b?.id});
+        const seen = [];
+
+        row.subscribe((value) => seen.push(value));
+        row.value = {id: 1, at: 'b'};
+        expect(seen).toEqual([]);
+
+        row.value = {id: 2, at: 'b'};
+        expect(seen).toHaveLength(1);
+    });
+
+    it('returns an unsubscribe handle that is also a Knockout-style dispose()', () => {
+        const count = observable(0);
+        const one = [];
+        const two = [];
+
+        const offOne = count.subscribe((v) => one.push(v));
+        const offTwo = count.subscribe((v) => two.push(v));
+
+        count.value = 1;
+        offOne();
+        count.value = 2;
+        offTwo.dispose();
+        count.value = 3;
+
+        expect(one).toEqual([1]);
+        expect(two).toEqual([1, 2]);
+    });
+
+    it('unsubscribing twice is harmless', () => {
+        const count = observable(0);
+        const off = count.subscribe(() => {});
+
+        off();
+        expect(() => off()).not.toThrow();
+    });
+
+    it('supports several subscribers, in the order they subscribed', () => {
+        const count = observable(0);
+        const order = [];
+
+        count.subscribe(() => order.push('first'));
+        count.subscribe(() => order.push('second'));
+        count.value = 1;
+
+        expect(order).toEqual(['first', 'second']);
+    });
+
+    it('survives a subscriber unsubscribing itself mid-notification', () => {
+        const count = observable(0);
+        const seen = [];
+
+        const off = count.subscribe((value) => {
+            seen.push(value);
+            off();
+        });
+        count.subscribe((value) => seen.push(`other:${value}`));
+
+        count.value = 1;
+        count.value = 2;
+
+        expect(seen).toEqual([1, 'other:1', 'other:2']);
+    });
+
+    it('reports a throwing subscriber and carries on', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const count = observable(0);
+        const seen = [];
+
+        count.subscribe(() => { throw new Error('bad subscriber'); });
+        count.subscribe((value) => seen.push(value));
+
+        expect(() => { count.value = 1; }).not.toThrow();
+        expect(seen).toEqual([1]);
+        expect(warn).toHaveBeenCalled();
+
+        warn.mockRestore();
+    });
+
+    it('rejects anything that is not a function', () => {
+        const count = observable(0);
+        expect(() => count.subscribe(null)).toThrow(TypeError);
+        expect(() => count.subscribe('nope')).toThrow(TypeError);
+    });
+
+    it('is not a Computation, so it does not enter the graph', () => {
+        const before = liveComputations();
+        const count = observable(0);
+
+        count.subscribe(() => {});
+        count.subscribe(() => {});
+
+        expect(liveComputations()).toBe(before);
+    });
+
+    it('reads inside a subscriber do not attach to the enclosing computation', () => {
+        // The subscriber runs during the WRITE, which may well be inside some
+        // other computation's body. Whatever it reads must not become that
+        // computation's dependency.
+        const source = observable(0);
+        const other = observable('x');
+        let runs = 0;
+
+        source.subscribe(() => { other.peek(); });
+
+        const watcher = effect(() => { runs++; source.value; });
+        expect(runs).toBe(1);
+
+        other.value = 'y';
+        flushSync();
+        expect(runs).toBe(1);
+
+        watcher.dispose();
+    });
+});
+
+describe('observableArray.subscribe', () => {
+    it('fires for every in-place mutator', () => {
+        const rows = observableArray([1, 2, 3]);
+        const seen = [];
+
+        rows.subscribe((value) => seen.push([...value]));
+
+        rows.push(4);
+        rows.pop();
+        rows.shift();
+        rows.unshift(0);
+        rows.splice(1, 1);
+        rows.reverse();
+        rows.sort();
+
+        expect(seen).toHaveLength(7);
+        expect(seen[0]).toEqual([1, 2, 3, 4]);
+    });
+
+    it('fires for remove() and removeAll()', () => {
+        const rows = observableArray(['a', 'b']);
+        const seen = [];
+
+        rows.subscribe((value) => seen.push([...value]));
+        rows.remove('a');
+        rows.removeAll();
+
+        expect(seen).toEqual([['b'], []]);
+    });
+
+    it('gates wholesale assignment on the comparator, like observable()', () => {
+        const rows = observableArray([1, 2]);
+        const seen = [];
+
+        rows.subscribe((value) => seen.push([...value]));
+
+        rows.value = [1, 2];
+        expect(seen).toEqual([]);
+
+        rows.value = [1, 2, 3];
+        expect(seen).toEqual([[1, 2, 3]]);
+    });
+
+    it('hands over the live array, not a copy', () => {
+        const rows = observableArray([1]);
+        let received = null;
+
+        rows.subscribe((value) => { received = value; });
+        rows.push(2);
+
+        expect(received).toBe(rows.peek());
     });
 });

@@ -145,7 +145,8 @@ describe('§5: the four names resolve outside a block too', () => {
 });
 
 describe('CONTEXT_KEYS', () => {
-    it('lists exactly the four names, and nothing has drifted', () => {
-        expect([...CONTEXT_KEYS].sort()).toEqual(['$data', '$index', '$parent', '$root']);
+    it('lists exactly the five names, and nothing has drifted', () => {
+        expect([...CONTEXT_KEYS].sort())
+            .toEqual(['$data', '$index', '$length', '$parent', '$root']);
     });
 });

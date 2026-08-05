@@ -12,15 +12,17 @@
  *   context.js, expression.js,          DOM-free. Contexts, expressions and the
  *   render.js                           default mustache renderer are all
  *                                       string and object work.
- *   handlers.js                         DOM-free to import. The handlers write
- *                                       to nodes the compiler hands them; they
- *                                       never reach for a global `document`.
- *   template-compiler.js                NOT DOM-free. `compile()` parses markup
- *                                       via a <template> element and walks the
- *                                       result with createTreeWalker, so it
- *                                       needs a `document`. `annotate()` and
- *                                       `scanBlocks()` are string-only and do
- *                                       not.
+ *   handlers.js, lifecycle.js           DOM-free to import. They write to nodes
+ *                                       they are handed and never reach for a
+ *                                       global `document`.
+ *   nodes.js, runtime.js,               NOT DOM-free. These parse markup via a
+ *   reconciler.js,                      <template> element, walk it with
+ *   apply-bindings.js                   createTreeWalker, and clone fragments.
+ *   template-compiler.js                NOT DOM-free at `compile()`. `annotate()`
+ *                                       and `scanBlocks()` are string-only and
+ *                                       still are — a keyed block's `<template>`
+ *                                       is built lazily, on first render, so
+ *                                       annotating in Node keeps working.
  *
  * Importing this module has no DOM side effects either way — the requirement
  * only bites when a compiler function is actually called. A DOM-free consumer
@@ -71,10 +73,35 @@
  * ── Binding contexts ─────────────────────────────────────────────────────────
  *
  * `createRootContext` and `createChildContext` build the `$data` / `$root` /
- * `$parent` / `$index` object expressions resolve against. They are published
- * now, ahead of the reconciler that will create child contexts automatically,
- * because a consumer evaluating an expression against a list item has no other
- * way to say which item it is.
+ * `$parent` / `$index` / `$length` object expressions resolve against. The
+ * reconciler creates child contexts by itself now, one per list item; these stay
+ * published because a consumer evaluating an expression against a list item
+ * outside a template has no other way to say which item it is.
+ *
+ * ── Two entry points, opposite directions ────────────────────────────────────
+ *
+ *   compile(template, data, container)   a template string becomes DOM
+ *   applyBindings(data, rootElement)     DOM that exists becomes live
+ *
+ * They share every handler, every expression, and the same reconciler. Which one
+ * fits depends on who owns the markup: a component owns its template, a
+ * server-rendered page owns its HTML and wants behaviour added to it.
+ *
+ * `applyBindings` returns a handle with `dispose()`. `compile` returns a
+ * controller with `destroy()`. Both must be called on a page that outlives the
+ * markup — an effect is a live node in the dependency graph and does not go away
+ * because its nodes did.
+ *
+ * ── Keyed lists ──────────────────────────────────────────────────────────────
+ *
+ * `{{#each items key=id}}` reconciles: an item that stays in the collection
+ * keeps its DOM nodes and its effects across changes, so focus, uncommitted
+ * input, scroll position and animation state survive. Without `key=` the block
+ * re-renders wholesale, as it did before M4, and says so once.
+ *
+ * Nothing about the reconciler is exported. An instance is created and destroyed
+ * by the binding that owns it, and a consumer holding one could only get the
+ * lifetime wrong.
  *
  * Three names from graph.js are withheld on purpose:
  *
@@ -128,6 +155,11 @@ export {
 export {createChildContext, createRootContext} from './context.js';
 
 export {registerBinding, unregisterBinding} from './handlers.js';
+
+// The other direction from compile(): take DOM that already exists and bring it
+// to life, rather than producing DOM from a template. See the file header for
+// what it does with `{{ }}` (nothing, deliberately) and how it stays idempotent.
+export {applyBindings} from './apply-bindings.js';
 
 // Named `renderTemplate` rather than `render`, which in a package about DOM
 // bindings would read as "render this binding" and is the one name a consumer

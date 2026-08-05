@@ -1,0 +1,523 @@
+/**
+ * applyBindings — activating DOM that already exists.
+ *
+ * The three properties that have to hold, and that the brief singled out:
+ * idempotence (applying twice must not double-bind), disposal (a handle that
+ * tears down every effect and listener it created), and an explicit answer about
+ * `{{ }}` in already-rendered DOM. Each has a section below, and each is
+ * asserted against observable behaviour rather than against internals.
+ */
+
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+
+import {applyBindings, resetApplyWarnings} from './apply-bindings.js';
+import {flushSync, liveComputations} from './graph.js';
+import {observable, observableArray} from './observable.js';
+import {registerBinding, unregisterBinding} from './handlers.js';
+
+let host;
+
+beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    resetApplyWarnings();
+});
+
+afterEach(() => {
+    host.remove();
+});
+
+/** Build a server-rendered page fragment. */
+function serve(html) {
+    host.innerHTML = html;
+    return host.firstElementChild;
+}
+
+// ── Activation ────────────────────────────────────────────────────────────────
+
+describe('activating existing markup', () => {
+    it('leaves the markup alone apart from its own marker', () => {
+        serve('<section class="card"><h1 data-bind-text="title">Server said this</h1></section>');
+
+        const handle = applyBindings({title: 'Client says this'}, host);
+
+        expect(host.querySelector('section').className).toBe('card');
+        expect(host.querySelector('h1').tagName).toBe('H1');
+        expect(host.querySelector('h1').getAttribute('data-bind-text')).toBe('title');
+        expect(host.querySelector('h1').textContent).toBe('Client says this');
+
+        handle.dispose();
+    });
+
+    it('primes every binding from the data, overwriting what the server sent', () => {
+        serve(`
+            <div>
+                <span data-bind-text="name">stale</span>
+                <input data-model="query" value="stale">
+                <a data-bind-href="url">link</a>
+                <b data-bind-hidden="hide">x</b>
+            </div>`);
+
+        const handle = applyBindings(
+            {name: 'Ada', query: 'live', url: '/x', hide: true}, host
+        );
+
+        expect(host.querySelector('span').textContent).toBe('Ada');
+        expect(host.querySelector('input').value).toBe('live');
+        expect(host.querySelector('a').getAttribute('href')).toBe('/x');
+        expect(host.querySelector('b').hidden).toBe(true);
+
+        handle.dispose();
+    });
+
+    it('wires events, with the view model as `this`', () => {
+        serve('<button data-on-click="save">Save</button>');
+        const vm = {saved: 0, save() { this.saved++; }};
+
+        const handle = applyBindings(vm, host);
+        host.querySelector('button').click();
+        host.querySelector('button').click();
+
+        expect(vm.saved).toBe(2);
+        handle.dispose();
+    });
+
+    it('wires two-way binding back into the view model', () => {
+        serve('<input data-model="query">');
+        const vm = {query: ''};
+
+        const handle = applyBindings(vm, host);
+        const input = host.querySelector('input');
+        input.value = 'typed';
+        input.dispatchEvent(new Event('input'));
+
+        expect(vm.query).toBe('typed');
+        handle.dispose();
+    });
+
+    it('follows observables with no further help', () => {
+        serve('<span data-bind-text="count.value">0</span>');
+        const count = observable(1);
+
+        const handle = applyBindings({count}, host);
+        expect(host.querySelector('span').textContent).toBe('1');
+
+        count.value = 7;
+        flushSync();
+
+        expect(host.querySelector('span').textContent).toBe('7');
+        handle.dispose();
+    });
+
+    it('re-runs everything on update() for a plain, untracked view model', () => {
+        serve('<span data-bind-text="name">x</span>');
+        const vm = {name: 'a'};
+
+        const handle = applyBindings(vm, host);
+        vm.name = 'b';
+        expect(host.querySelector('span').textContent).toBe('a');
+
+        handle.update(vm);
+        expect(host.querySelector('span').textContent).toBe('b');
+
+        handle.dispose();
+    });
+
+    it('activates the root element itself, not only its descendants', () => {
+        const root = serve('<div data-bind-text="msg">x</div>');
+
+        const handle = applyBindings({msg: 'hello'}, root);
+
+        expect(root.textContent).toBe('hello');
+        handle.dispose();
+    });
+
+    it('refuses anything that is not an element', () => {
+        expect(() => applyBindings({}, null)).toThrow(TypeError);
+        expect(() => applyBindings({}, 'body')).toThrow(TypeError);
+    });
+
+    it('works with a custom binding from the public registry', () => {
+        registerBinding('shout', {
+            attribute: 'data-shout',
+            expression: true,
+            tracks: true,
+            update({binding, nodes, context}) {
+                for (const el of nodes) el.textContent = String(binding.evaluate(context)).toUpperCase();
+                return true;
+            }
+        });
+
+        serve('<p data-shout="word">x</p>');
+        const handle = applyBindings({word: 'quiet'}, host);
+
+        expect(host.querySelector('p').textContent).toBe('QUIET');
+
+        handle.dispose();
+        unregisterBinding('shout');
+    });
+});
+
+// ── data-if ───────────────────────────────────────────────────────────────────
+
+describe('data-if detaches the element rather than re-rendering it', () => {
+    it('removes it when false and puts the SAME node back when true', () => {
+        serve('<div><p data-if="open">body</p></div>');
+        const original = host.querySelector('p');
+        const vm = {open: true};
+
+        const handle = applyBindings(vm, host);
+        expect(host.querySelector('p')).toBe(original);
+
+        vm.open = false;
+        handle.update(vm);
+        expect(host.querySelector('p')).toBeNull();
+
+        vm.open = true;
+        handle.update(vm);
+        // Node identity across a toggle — which the compiled `data-if` cannot
+        // offer, because it re-renders its region from captured source.
+        expect(host.querySelector('p')).toBe(original);
+
+        handle.dispose();
+    });
+
+    it('puts it back in the right place among its siblings', () => {
+        serve('<div><i>1</i><p data-if="open">2</p><i>3</i></div>');
+        const vm = {open: true};
+        const handle = applyBindings(vm, host);
+
+        vm.open = false;
+        handle.update(vm);
+        expect(host.querySelector('div').textContent).toBe('13');
+
+        vm.open = true;
+        handle.update(vm);
+        expect(host.querySelector('div').textContent).toBe('123');
+
+        handle.dispose();
+    });
+
+    it('binds the children of an element that starts out hidden', () => {
+        serve('<div><p data-if="open"><b data-bind-text="msg">x</b></p></div>');
+        const vm = {open: false, msg: 'ready'};
+
+        const handle = applyBindings(vm, host);
+        expect(host.querySelector('b')).toBeNull();
+
+        vm.open = true;
+        handle.update(vm);
+
+        // Bound while detached, and correct the moment it reappears.
+        expect(host.querySelector('b').textContent).toBe('ready');
+        handle.dispose();
+    });
+
+    it('is not fooled by an empty array, matching {{#if}}', () => {
+        serve('<div><p data-if="items">any</p></div>');
+        const handle = applyBindings({items: []}, host);
+
+        expect(host.querySelector('p')).toBeNull();
+        handle.dispose();
+    });
+});
+
+// ── data-each ─────────────────────────────────────────────────────────────────
+
+describe('data-each reconciles a list over the element\'s own contents', () => {
+    it('treats the initial contents as the item template', () => {
+        serve('<ul data-each="rows key=id"><li data-bind-text="name">placeholder</li></ul>');
+
+        const handle = applyBindings({rows: [{id: 1, name: 'a'}, {id: 2, name: 'b'}]}, host);
+
+        expect([...host.querySelectorAll('li')].map((el) => el.textContent)).toEqual(['a', 'b']);
+        handle.dispose();
+    });
+
+    it('preserves node identity across a change, like the compiled block', () => {
+        serve('<ul data-each="rows key=id"><li data-bind-text="name">x</li></ul>');
+        const rows = observableArray([{id: 1, name: 'a'}, {id: 2, name: 'b'}]);
+
+        const handle = applyBindings({rows}, host);
+        const before = [...host.querySelectorAll('li')];
+
+        rows.unshift({id: 0, name: 'z'});
+        flushSync();
+
+        const after = [...host.querySelectorAll('li')];
+        expect(after.map((el) => el.textContent)).toEqual(['z', 'a', 'b']);
+        expect(after[1]).toBe(before[0]);
+        expect(after[2]).toBe(before[1]);
+
+        handle.dispose();
+    });
+
+    it('supports mustache inside the item template, because that IS a template', () => {
+        serve('<ul data-each="rows key=id"><li>{{name}} ({{$index}})</li></ul>');
+
+        const handle = applyBindings({rows: [{id: 1, name: 'a'}]}, host);
+
+        expect(host.querySelector('li').textContent).toBe('a (0)');
+        handle.dispose();
+    });
+
+    it('does not activate the item template as page markup', () => {
+        // The <li> is a template, so it must not end up in the WeakSet as a
+        // bound element — it is about to be removed from the document.
+        serve('<ul data-each="rows key=id"><li data-bind-text="name">x</li></ul>');
+        const template = host.querySelector('li');
+
+        const handle = applyBindings({rows: []}, host);
+
+        expect(template.hasAttribute('data-dm-bound')).toBe(false);
+        expect(host.querySelectorAll('li')).toHaveLength(0);
+        handle.dispose();
+    });
+
+    it('refuses an unkeyed list, loudly', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<ul data-each="rows"><li data-bind-text="name">x</li></ul>');
+
+        const handle = applyBindings({rows: [{id: 1, name: 'a'}]}, host);
+
+        expect(host.querySelectorAll('li')).toHaveLength(1);   // untouched
+        expect(warn.mock.calls.flat().join('\n')).toMatch(/needs a key/);
+
+        handle.dispose();
+        warn.mockRestore();
+    });
+});
+
+// ── {{ }} in rendered DOM ─────────────────────────────────────────────────────
+
+describe('{{ }} in already-rendered DOM', () => {
+    it('is left exactly as it was found', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<p>Hello {{name}}</p>');
+
+        const handle = applyBindings({name: 'Ada'}, host);
+
+        expect(host.querySelector('p').textContent).toBe('Hello {{name}}');
+        handle.dispose();
+        warn.mockRestore();
+    });
+
+    it('says so once, and points at the supported spelling', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<p>Hello {{name}}</p><p>and {{other}}</p>');
+
+        const handle = applyBindings({name: 'Ada'}, host);
+
+        const messages = warn.mock.calls.flat().join('\n');
+        expect(messages).toMatch(/does not interpolate/);
+        expect(messages).toMatch(/data-bind-text/);
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        handle.dispose();
+        warn.mockRestore();
+    });
+
+    it('says nothing about prose that merely contains braces', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<p>Use {{ }} for interpolation, or { a: 1 } for an object.</p>');
+
+        const handle = applyBindings({}, host);
+
+        expect(warn).not.toHaveBeenCalled();
+        handle.dispose();
+        warn.mockRestore();
+    });
+});
+
+// ── Idempotence ───────────────────────────────────────────────────────────────
+
+describe('applying twice', () => {
+    it('does not bind an element a second time', () => {
+        serve('<span data-bind-text="a">x</span>');
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const first = applyBindings({a: 'one'}, host);
+        const second = applyBindings({a: 'two'}, host);
+
+        expect(first.bindings).toBe(1);
+        expect(second.bindings).toBe(0);
+        // The first handle still owns it — the second call changed nothing.
+        expect(host.querySelector('span').textContent).toBe('one');
+
+        first.dispose();
+        second.dispose();
+        warn.mockRestore();
+    });
+
+    it('does not double up event listeners', () => {
+        serve('<button data-on-click="hit">go</button>');
+        const vm = {hits: 0, hit() { this.hits++; }};
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const first = applyBindings(vm, host);
+        const second = applyBindings(vm, host);
+
+        host.querySelector('button').click();
+        expect(vm.hits).toBe(1);
+
+        first.dispose();
+        second.dispose();
+        warn.mockRestore();
+    });
+
+    it('warns once, naming the root', () => {
+        serve('<span data-bind-text="a" id="target">x</span>');
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const first = applyBindings({a: 1}, host);
+        const second = applyBindings({a: 2}, host);
+        const third = applyBindings({a: 3}, host);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/already bound/);
+
+        first.dispose();
+        second.dispose();
+        third.dispose();
+        warn.mockRestore();
+    });
+
+    it('allows re-applying after the first handle is disposed', () => {
+        serve('<span data-bind-text="a">x</span>');
+
+        const first = applyBindings({a: 'one'}, host);
+        first.dispose();
+
+        const second = applyBindings({a: 'two'}, host);
+        expect(second.bindings).toBe(1);
+        expect(host.querySelector('span').textContent).toBe('two');
+
+        second.dispose();
+    });
+});
+
+// ── Disposal ──────────────────────────────────────────────────────────────────
+
+describe('the disposal handle', () => {
+    it('returns the Computation count to where it started', () => {
+        const before = liveComputations();
+
+        serve(`
+            <div>
+                <span data-bind-text="a">x</span>
+                <span data-bind-text="b">x</span>
+                <p data-if="show">y</p>
+                <ul data-each="rows key=id"><li data-bind-text="n">z</li></ul>
+            </div>`);
+
+        const handle = applyBindings(
+            {a: 1, b: 2, show: true, rows: [{id: 1, n: 'r'}, {id: 2, n: 's'}]}, host
+        );
+
+        expect(liveComputations()).toBeGreaterThan(before);
+
+        handle.dispose();
+
+        expect(liveComputations()).toBe(before);
+    });
+
+    it('removes the listeners it attached', () => {
+        serve('<button data-on-click="hit">go</button><input data-model="q">');
+        const vm = {hits: 0, q: '', hit() { this.hits++; }};
+
+        const handle = applyBindings(vm, host);
+        handle.dispose();
+
+        host.querySelector('button').click();
+        const input = host.querySelector('input');
+        input.value = 'after';
+        input.dispatchEvent(new Event('input'));
+
+        expect(vm.hits).toBe(0);
+        expect(vm.q).toBe('');
+    });
+
+    it('removes the visible marker it added', () => {
+        serve('<span data-bind-text="a">x</span>');
+
+        const handle = applyBindings({a: 1}, host);
+        expect(host.querySelector('span').hasAttribute('data-dm-bound')).toBe(true);
+
+        handle.dispose();
+        expect(host.querySelector('span').hasAttribute('data-dm-bound')).toBe(false);
+    });
+
+    it('restores a hidden data-if element and removes its placeholder', () => {
+        serve('<div><p data-if="open">body</p></div>');
+        const before = host.innerHTML;
+        const vm = {open: false};
+
+        const handle = applyBindings(vm, host);
+        expect(host.querySelector('p')).toBeNull();
+
+        handle.dispose();
+
+        expect(host.querySelector('p')).not.toBeNull();
+        expect(host.innerHTML).toBe(before);
+    });
+
+    it('stops updating after disposal', () => {
+        serve('<span data-bind-text="count.value">x</span>');
+        const count = observable(1);
+
+        const handle = applyBindings({count}, host);
+        handle.dispose();
+
+        count.value = 99;
+        flushSync();
+
+        expect(host.querySelector('span').textContent).toBe('1');
+    });
+
+    it('is safe to call twice', () => {
+        serve('<span data-bind-text="a">x</span>');
+        const handle = applyBindings({a: 1}, host);
+
+        handle.dispose();
+        expect(() => handle.dispose()).not.toThrow();
+    });
+
+    it('leaves a torn-down list empty and leak-free', () => {
+        const before = liveComputations();
+        serve('<ul data-each="rows key=id"><li data-bind-text="n">x</li></ul>');
+
+        const handle = applyBindings({rows: [{id: 1, n: 'a'}, {id: 2, n: 'b'}]}, host);
+        expect(host.querySelectorAll('li')).toHaveLength(2);
+
+        handle.dispose();
+
+        expect(host.querySelectorAll('li')).toHaveLength(0);
+        expect(liveComputations()).toBe(before);
+    });
+});
+
+// ── Region bindings that cannot work here ─────────────────────────────────────
+
+describe('a custom region binding', () => {
+    it('is refused with an explanation rather than half-applied', () => {
+        registerBinding('boxed', {
+            attribute: 'data-boxed',
+            expression: true,
+            region: true,
+            capturesBody: true,
+            update() { return true; }
+        });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<p data-boxed="x">y</p>');
+
+        const handle = applyBindings({x: 1}, host);
+
+        expect(warn.mock.calls.flat().join('\n')).toMatch(/region binding/);
+        expect(host.querySelector('p').textContent).toBe('y');
+
+        handle.dispose();
+        unregisterBinding('boxed');
+        warn.mockRestore();
+    });
+});

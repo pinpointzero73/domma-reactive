@@ -51,6 +51,28 @@ const _pending = new Set();
 let _flushScheduled = false;
 let _flushing       = false;
 
+// ── Instrumentation ───────────────────────────────────────────────────────────
+
+/**
+ * Computations constructed but not yet disposed.
+ *
+ * A diagnostic, not a feature: it is how a test proves that churning a keyed
+ * list a thousand times leaves the dependency graph exactly the size it started
+ * at. A leak here is invisible in the DOM — the markup looks right while the
+ * graph grows without bound — so "it renders correctly" is not evidence and this
+ * number is.
+ *
+ * Deliberately not re-exported from index.js. It says nothing about bindings or
+ * about the DOM, which is what keeps this module free of both, but it is also
+ * not a promise to consumers.
+ */
+let _liveComputations = 0;
+
+/** @returns {number} Computations alive right now. */
+export function liveComputations() {
+    return _liveComputations;
+}
+
 // ── Dep ───────────────────────────────────────────────────────────────────────
 
 /**
@@ -152,6 +174,8 @@ export class Computation {
         this.value    = undefined;
         this.dirty    = true;
         this.disposed = false;
+
+        _liveComputations++;
     }
 
     /**
@@ -231,11 +255,15 @@ export class Computation {
 
     /** Unlink from the graph. Safe to call more than once. */
     dispose() {
+        if (this.disposed) return;
+
         for (const dep of this.deps) dep.subs.delete(this);
         this.deps.clear();
         this.dep.subs.clear();
         _pending.delete(this);
         this.disposed = true;
+
+        _liveComputations--;
     }
 }
 

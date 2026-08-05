@@ -7,8 +7,11 @@
  * raw — become "built-in handlers on the new registry, the same mechanism public
  * `registerBinding()` uses". They do, literally: the bottom of this file calls
  * `registerBinding()` eight times through the same exported function a consumer
- * calls, with no privileged flag and no second code path. If the public API
- * could not express a built-in, the public API would be a demo.
+ * calls, with no privileged flag and no second code path. The ninth built-in,
+ * `each`, is registered by template-compiler.js through that same function — it
+ * lives elsewhere only because the reconciler needs a compiled block template
+ * and this module must not know that templates exist. If the public API could
+ * not express a built-in, the public API would be a demo.
  *
  * The one thing a custom binding cannot do is invent `{{ }}` syntax. `text`,
  * `attr`, `block` and `raw` are discovered by the compiler from mustache tokens,
@@ -301,8 +304,9 @@ const regionHandler = {
  * cannot go stale, and reuses the machinery `{{#if}}` already relies on.
  *
  * The cost is node identity: toggling twice gives a new element. `{{#if}}` has
- * always behaved that way, so the two are at least consistent, and preserving
- * identity across a toggle is the reconciler's job (M4).
+ * always behaved that way, so the two are at least consistent. `applyBindings`
+ * is the one place `data-if` DOES preserve the element, and it can only do so
+ * because nothing there is ever re-indexed — see apply-bindings.js.
  *
  * Truthiness is mustache truthiness — an empty array is falsy — so that
  * `{{#if items}}` and `data-if="items"` cannot disagree about an empty list.

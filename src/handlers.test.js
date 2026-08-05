@@ -743,7 +743,17 @@ describe('resolveWriteTarget', () => {
 
 // ── Behaviour bindings inside a context-shifting block ────────────────────────
 
-describe('the M4 seam', () => {
+describe('the M4 seam — an UNKEYED block still degrades, loudly', () => {
+    /*
+     * M4 shipped per-item bindings, but only for a block with `key=`. An
+     * unkeyed {{#each}} still re-renders to a string, so it still cannot carry
+     * a behaviour binding — and now warns twice: once that it is not
+     * reconciling at all, and once that this particular binding was dropped.
+     * `calls.flat()` rather than `calls[0]` because the order of the two is an
+     * implementation detail and pinning it would break on the next change.
+     */
+    const messages = (warn) => warn.mock.calls.flat().join('\n');
+
     it('warns rather than silently dropping a handler inside {{#each}}', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -757,7 +767,8 @@ describe('the M4 seam', () => {
         expect(warn).toHaveBeenCalledWith(
             expect.stringContaining('data-on-click')
         );
-        expect(warn.mock.calls[0][0]).toMatch(/reconciler/);
+        expect(messages(warn)).toMatch(/reconciler/);
+        expect(messages(warn)).toMatch(/key=/);
 
         warn.mockRestore();
     });
@@ -773,7 +784,7 @@ describe('the M4 seam', () => {
             {template: 'person-card'}
         );
 
-        expect(warn.mock.calls[0][0]).toMatch(/person-card/);
+        expect(messages(warn)).toMatch(/person-card/);
         warn.mockRestore();
     });
 });

@@ -39,10 +39,12 @@ import * as expression from './expression.js';
 import {createChildContext, createRootContext} from './context.js';
 import {registerBinding, unregisterBinding} from './handlers.js';
 import {render as renderTemplate} from './render.js';
+import {applyBindings} from './apply-bindings.js';
 
 const SURFACE = [
     'Computation', 'Dep', 'DepMap', 'TemplateCompiler',
-    'annotate', 'clearExpressionCache', 'compile', 'compileExpression', 'computed',
+    'annotate', 'applyBindings',
+    'clearExpressionCache', 'compile', 'compileExpression', 'computed',
     'createChildContext', 'createRootContext',
     'effect', 'evaluateAst', 'evaluateExpression', 'expressionDependencies',
     'flushSync', 'isEqual',
@@ -114,6 +116,7 @@ describe('public API', () => {
         expect(api.registerBinding, 'registerBinding').toBe(registerBinding);
         expect(api.unregisterBinding, 'unregisterBinding').toBe(unregisterBinding);
         expect(api.renderTemplate, 'renderTemplate').toBe(renderTemplate);
+        expect(api.applyBindings, 'applyBindings').toBe(applyBindings);
     });
 
     it('binds the TemplateCompiler namespace to the same functions it exports', () => {

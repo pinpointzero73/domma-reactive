@@ -72,7 +72,8 @@ const EXPECTED = [
     'registerBinding',
     'unregisterBinding',
     'createRootContext',
-    'createChildContext'
+    'createChildContext',
+    'applyBindings'
 ];
 
 /**
@@ -158,6 +159,42 @@ function assertCompiler(api, label) {
         api.TemplateCompiler.resolvePath({user: {email: 'a@b.c'}}, 'user.email') === 'a@b.c',
         `${label}: TemplateCompiler.resolvePath() did not resolve a dotted path`
     );
+
+    // A keyed block reaches annotate() without a document, because the block's
+    // <template> is built lazily on first render. If that ever stopped being
+    // true, `annotate` would start throwing in Node — silently, for the half of
+    // consumers who never call it there, and loudly for the half who do.
+    const realWarn = console.warn;
+    console.warn = () => {};
+    let keyed;
+    try {
+        keyed = api.annotate('{{#each rows key=id}}<li>{{n}}</li>{{/each}}');
+    } finally {
+        console.warn = realWarn;
+    }
+
+    assert(
+        keyed.bindings.length === 1 && keyed.bindings[0].kind === 'each',
+        `${label}: a keyed {{#each}} did not compile to an 'each' binding — ` +
+        `got ${JSON.stringify(keyed.bindings.map((b) => b.kind))}`
+    );
+    assert(
+        keyed.bindings[0].keyPath === 'id',
+        `${label}: the key path was lost in the bundle`
+    );
+    assert(
+        !keyed.annotated.includes('{{'),
+        `${label}: a keyed block left mustache source in the annotated template`
+    );
+
+    // applyBindings is real, not a stub: it refuses a non-element.
+    let threw = false;
+    try {
+        api.applyBindings({}, null);
+    } catch {
+        threw = true;
+    }
+    assert(threw, `${label}: applyBindings() accepted a non-element`);
 }
 
 /**
