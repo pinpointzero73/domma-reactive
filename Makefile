@@ -19,8 +19,9 @@ help:
 	@echo ""
 	@echo "  Release  (in this order)"
 	@echo "    make bump V=X.Y.Z Set the version in package.json + package-lock.json"
-	@echo "    git commit        Commit the bump with the release message"
-	@echo "    make preflight    Tree clean, not behind origin, version unreleased, green"
+	@echo "    <CHANGELOG.md>    Add a '## [X.Y.Z] - YYYY-MM-DD' entry at the top"
+	@echo "    git commit        Commit the bump and the entry together"
+	@echo "    make preflight    Clean, not behind origin, unreleased, noted, green"
 	@echo "    make release-npm  Publish to npm"
 	@echo "    make release-gh   Push main, tag vX.Y.Z, push the tag"
 	@echo ""
@@ -87,6 +88,8 @@ preflight:
 	@npm view domma-reactive@$(VERSION) version >/dev/null 2>&1 \
 		&& { echo ""; echo "  preflight: $(VERSION) is already published — npm will refuse it"; echo ""; exit 1; } \
 		|| true
+	@grep -q "^## \[$(VERSION)\]" CHANGELOG.md \
+		|| { echo ""; echo "  preflight: no '## [$(VERSION)]' entry in CHANGELOG.md"; echo ""; exit 1; }
 	$(MAKE) verify
 	@echo ""
 	@echo "  preflight: clean, not behind origin, $(VERSION) unpublished, artefacts verified"
