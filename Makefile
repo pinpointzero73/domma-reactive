@@ -1,4 +1,4 @@
-.PHONY: help install test test-watch build verify pack preflight bump release-npm release-gh clean
+.PHONY: help install test test-watch build verify check pack preflight bump release-npm release-gh clean
 
 VERSION := $(shell node -p "require('./package.json').version")
 
@@ -13,6 +13,7 @@ help:
 	@echo "    make test-watch   Run the suite in watch mode"
 	@echo "    make build        Build dist/ (UMD, CJS, ESM)"
 	@echo "    make verify       Build, then check the packaged artefacts"
+	@echo "    make check        test + verify"
 	@echo "    make pack         Create a tarball for local testing (no publish)"
 	@echo "    make clean        Remove dist/ and any stray tarball"
 	@echo ""
@@ -44,12 +45,15 @@ test-watch:
 build:
 	npm run build
 
-# The one that matters before a publish: builds, then loads every declared
+# The one that matters before a publish. Builds, then loads every declared
 # entry point the way a real consumer would — require(), import() and a browser
-# <script> — and checks no bundle contains dynamic code construction, which is
-# what lets bindings run under script-src 'self'.
+# <script> — checks no bundle contains dynamic code construction (what lets
+# bindings run under script-src 'self'), and asserts every artefact is stamped
+# with the current version, so a stale dist/ cannot be published as a fresh one.
 verify:
 	npm run test:dist
+
+check: test verify
 
 pack:
 	npm run build

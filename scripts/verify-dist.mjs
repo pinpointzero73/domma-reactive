@@ -408,6 +408,25 @@ await check('no dynamic code construction in any bundle (CSP: script-src \'self\
     }
 });
 
+// A built file is otherwise anonymous — handed one, there is no way to tell
+// which release it is, and a stale dist/ is indistinguishable from a fresh
+// one. Asserting the banner here is what makes it a fact rather than a
+// decoration: if the version and the artefacts disagree, one of them was not
+// rebuilt.
+await check(`every bundle is stamped v${pkg.version}`, () => {
+    for (const relative of [pkg.main, pkg.module, pkg.browser]) {
+        const head = readFileSync(join(root, relative), 'utf8').slice(0, 200);
+        const stamped = head.match(/domma-reactive v(\d+\.\d+\.\d+)/);
+
+        assert(stamped, `${relative} carries no version banner — rebuild`);
+        assert(
+            !stamped || stamped[1] === pkg.version,
+            `${relative} is stamped v${stamped && stamped[1]} but package.json says ` +
+            `v${pkg.version} — this dist/ is stale, rebuild before publishing`
+        );
+    }
+});
+
 if (failures.length > 0) {
     console.log(`\n${failures.length} check(s) failed:`);
     for (const label of failures) console.log(`  - ${label}`);
