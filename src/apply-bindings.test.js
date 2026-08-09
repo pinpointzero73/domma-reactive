@@ -711,3 +711,215 @@ describe('a whole small application', () => {
         handle.dispose();
     });
 });
+
+// ── Virtual elements ──────────────────────────────────────────────────────────
+//
+// Knockout's `<!-- ko if: x --> … <!-- /ko -->`. It exists because a binding
+// attribute needs an element to sit on, and sometimes there is no element to
+// spare: a run of `<li>`s, three `<td>`s in a row, a fragment inside a `<p>`.
+// Wrapping them in a `<div>` to hold the attribute changes the layout, and in a
+// table it is not even valid HTML.
+//
+// `compile()` has never needed this — `{{#if}}` already delimits a region with
+// comments. It is applyBindings, where the markup is the page and the author
+// cannot add mustache, that has nothing to offer.
+
+describe('virtual bindings', () => {
+    it('shows a run of siblings when the condition is true', () => {
+        serve('<ul><li>keep</li><!-- dm if: open --><li>a</li><li>b</li><!-- /dm --></ul>');
+        applyBindings({open: true}, host);
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent))
+            .toEqual(['keep', 'a', 'b']);
+    });
+
+    it('removes the run when the condition is false', () => {
+        serve('<ul><li>keep</li><!-- dm if: open --><li>a</li><li>b</li><!-- /dm --></ul>');
+        applyBindings({open: false}, host);
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['keep']);
+    });
+
+    it('brings the same nodes back, rather than rebuilding them', () => {
+        serve('<ul><!-- dm if: open.value --><li>a</li><!-- /dm --></ul>');
+        const open = observable(true);
+        applyBindings({open}, host);
+
+        const li = host.querySelector('li');
+        open.value = false;
+        flushSync();
+        expect(host.querySelector('li')).toBeNull();
+
+        open.value = true;
+        flushSync();
+        expect(host.querySelector('li')).toBe(li);
+    });
+
+    it('keeps the bindings inside a hidden run alive', () => {
+        serve('<ul><!-- dm if: open.value --><li data-bind-text="name.value">x</li><!-- /dm --></ul>');
+        const open = observable(false);
+        const name = observable('Ada');
+        applyBindings({open, name}, host);
+
+        name.value = 'Grace';
+        open.value = true;
+        flushSync();
+
+        expect(host.querySelector('li').textContent).toBe('Grace');
+    });
+
+    it('nests', () => {
+        serve(
+            '<ul><!-- dm if: outer --><li>a</li>' +
+            '<!-- dm if: inner --><li>b</li><!-- /dm --><!-- /dm --></ul>'
+        );
+        applyBindings({outer: true, inner: false}, host);
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['a']);
+    });
+
+    it('keeps a nested block hidden across the outer block closing and reopening', () => {
+        // The inner block's anchors travel with the outer block's held nodes.
+        // If they lost their siblings on the way out, the inner range would come
+        // back empty and its content would reappear regardless of its own
+        // condition — silently, and only on the second toggle.
+        serve(
+            '<ul><!-- dm if: outer.value --><li>a</li>' +
+            '<!-- dm if: inner.value --><li>b</li><!-- /dm --><!-- /dm --></ul>'
+        );
+        const outer = observable(true);
+        const inner = observable(false);
+        applyBindings({outer, inner}, host);
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['a']);
+
+        outer.value = false;
+        flushSync();
+        expect(host.querySelectorAll('li')).toHaveLength(0);
+
+        outer.value = true;
+        flushSync();
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['a']);
+    });
+
+    it('honours a nested block that changed while the outer one was closed', () => {
+        // The case that decides how held nodes are stored. While the outer block
+        // is closed, the inner block's anchors are out of the document — but it
+        // is still live, and its condition can still change. It has to be able to
+        // insert into wherever its anchors currently are, which means they must
+        // still have a parent and their siblings.
+        serve(
+            '<ul><!-- dm if: outer.value --><li>a</li>' +
+            '<!-- dm if: inner.value --><li>b</li><!-- /dm --><!-- /dm --></ul>'
+        );
+        const outer = observable(true);
+        const inner = observable(false);
+        applyBindings({outer, inner}, host);
+
+        outer.value = false;
+        flushSync();
+
+        inner.value = true;          // changed while out of the document
+        flushSync();
+
+        outer.value = true;
+        flushSync();
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['a', 'b']);
+    });
+
+    it('renders a keyed list over the nodes between the anchors', () => {
+        serve('<ul><!-- dm each: rows key=id --><li data-bind-text="name"></li><!-- /dm --></ul>');
+        applyBindings({rows: [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}]}, host);
+
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['Ada', 'Grace']);
+    });
+
+    it('keeps node identity across a change to a virtual list', () => {
+        serve('<ul><!-- dm each: rows key=id --><li data-bind-text="name"></li><!-- /dm --></ul>');
+        const rows = observableArray([{id: 1, name: 'Ada'}]);
+        applyBindings({rows}, host);
+
+        const ada = host.querySelector('li');
+        rows.unshift({id: 2, name: 'Grace'});
+        flushSync();
+
+        expect(host.querySelectorAll('li')).toHaveLength(2);
+        expect(host.querySelectorAll('li')[1]).toBe(ada);
+    });
+
+    it('writes text between the anchors', () => {
+        serve('<p>Hello <!-- dm text: name -->placeholder<!-- /dm -->!</p>');
+        applyBindings({name: 'Ada'}, host);
+
+        expect(host.querySelector('p').textContent).toBe('Hello Ada!');
+    });
+
+    it('updates that text when the value changes', () => {
+        serve('<p><!-- dm text: name.value -->x<!-- /dm --></p>');
+        const name = observable('Ada');
+        applyBindings({name}, host);
+
+        name.value = 'Grace';
+        flushSync();
+        expect(host.querySelector('p').textContent).toBe('Grace');
+    });
+
+    it('warns once about a virtual binding it does not implement', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<ul><!-- dm with: obj --><li>a</li><!-- /dm --></ul>');
+        applyBindings({obj: {}}, host);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('with');
+        warn.mockRestore();
+    });
+
+    it('warns once about an opener with no closer, and binds nothing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<ul><!-- dm if: open --><li>a</li></ul>');
+        applyBindings({open: false}, host);
+
+        expect(host.querySelectorAll('li')).toHaveLength(1);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('/dm');
+        warn.mockRestore();
+    });
+
+    it('refuses a virtual list with no key', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        serve('<ul><!-- dm each: rows --><li></li><!-- /dm --></ul>');
+        applyBindings({rows: [{id: 1}]}, host);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('key');
+        warn.mockRestore();
+    });
+
+    it('puts the markup back on dispose', () => {
+        serve('<ul><li>keep</li><!-- dm if: open --><li>a</li><!-- /dm --></ul>');
+        const handle = applyBindings({open: false}, host);
+
+        expect(host.querySelectorAll('li')).toHaveLength(1);
+        handle.dispose();
+        expect([...host.querySelectorAll('li')].map(li => li.textContent)).toEqual(['keep', 'a']);
+    });
+
+    it('leaves no effects behind after dispose', () => {
+        serve('<ul><!-- dm each: rows key=id --><li data-bind-text="name"></li><!-- /dm --></ul>');
+        const baseline = liveComputations();
+
+        const handle = applyBindings({rows: [{id: 1, name: 'Ada'}]}, host);
+        handle.dispose();
+
+        expect(liveComputations()).toBe(baseline);
+    });
+
+    it('ignores an ordinary comment', () => {
+        serve('<ul><!-- just a note --><li>a</li></ul>');
+        const handle = applyBindings({}, host);
+
+        expect(host.querySelectorAll('li')).toHaveLength(1);
+        expect(handle.bindings).toBe(0);
+    });
+});

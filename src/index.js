@@ -65,10 +65,14 @@
  * ── The binding registry ─────────────────────────────────────────────────────
  *
  * `registerBinding(name, handler)` adds a binding kind. It is not a side door:
- * all eight built-ins — text, attr, block, raw, if, event, bind, model — are
- * registered through this exact function, so anything a built-in can do a
- * consumer can do. `unregisterBinding` removes one. The handler contract is
- * documented at the top of handlers.js.
+ * all ten built-ins — text, attr, block, raw, if, event, bind, model, options,
+ * focus — are registered through this exact function, so anything a built-in
+ * can do a consumer can do. `unregisterBinding` removes one. The handler
+ * contract is documented at the top of handlers.js.
+ *
+ * `registerExtender(name, fn)` is the same idea one layer down, for the
+ * `.extend({…})` vocabulary an observable understands. `rateLimit`, `throttle`
+ * and `notify` are registered through it too. See extenders.js.
  *
  * ── Binding contexts ─────────────────────────────────────────────────────────
  *
@@ -155,6 +159,10 @@ export {
 export {createChildContext, createRootContext} from './context.js';
 
 export {registerBinding, unregisterBinding} from './handlers.js';
+
+// The `.extend()` vocabulary. `applyExtenders` stays inside: it is how an
+// observable dispatches a spec, not something a consumer has a use for.
+export {registerExtender, unregisterExtender} from './extenders.js';
 
 // The other direction from compile(): take DOM that already exists and bring it
 // to life, rather than producing DOM from a template. See the file header for

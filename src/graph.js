@@ -159,12 +159,14 @@ export class Computation {
      * @param {boolean}  [options.effect]    True for effects (no meaningful return value).
      * @param {Function} [options.onNotify]  Called after this computation's value changes.
      * @param {string}   [options.label]     Debug label (e.g. the computed's name).
+     * @param {Function} [options.write]     Makes the computation writable; see `write()`.
      */
     constructor(fn, options = {}) {
         this.fn       = fn;
         this.label    = options.label || (options.effect ? 'effect' : 'computed');
         this.isEffect = options.effect === true;
         this.onNotify = options.onNotify || null;
+        this._write   = typeof options.write === 'function' ? options.write : null;
 
         /** Deps this computation read during its last evaluation. */
         this.deps  = new Set();
@@ -234,6 +236,49 @@ export class Computation {
      */
     get value() {
         return this.get();
+    }
+
+    /**
+     * Assigning to a computed hands the value to its `write` function.
+     *
+     * There is nowhere else for it to go: the cached `_value` is an output, and
+     * storing into it would produce a value that the next recompute silently
+     * discards. So a computed is writable only if its author said where a write
+     * should land — `computed({read, write})` — and read-only otherwise.
+     *
+     * This is what lets `data-model` bind a derived value. Without it the
+     * binding would evaluate the computed, find an object, assign `value` onto
+     * it, and hit the getter's cache: the control would appear to work, and
+     * every keystroke would vanish on the next recompute.
+     */
+    set value(next) {
+        this.write(next);
+    }
+
+    /**
+     * Push a value back through the derivation.
+     *
+     * Run untracked, because the writer's own reads are not what this
+     * computation depends on. A writer that reads a unit setting to convert
+     * before storing would otherwise acquire a dependency on that setting, and
+     * changing it would invalidate the computed for no reason.
+     *
+     * @param {*} next
+     */
+    write(next) {
+        if (!this._write) {
+            console.warn(
+                `[Domma Reactive] "${this.label}" is a read-only computed — the assignment ` +
+                'was ignored. Pass computed({read, write}) to say where a write should land.'
+            );
+            return;
+        }
+        untracked(() => this._write(next));
+    }
+
+    /** Imperative alias for assigning `.value`, matching observable().set. */
+    set(next) {
+        this.write(next);
     }
 
     /**
@@ -465,13 +510,32 @@ export function trackingProxy(target, depFor, options = {}) {
  * Create a lazily-evaluated derived value.
  * The body is not run until something calls `.get()`.
  *
- * @param {Function} fn                  Synchronous derivation. Must not await.
+ * Two forms:
+ *
+ *   computed(() => a.value + b.value)              read-only
+ *   computed({read, write})                        writable — see Computation#write
+ *
+ * The object form is Knockout's, and is kept because the alternative spellings
+ * are worse: a second positional function is unreadable at the call site, and
+ * `computed(fn, {write})` splits one derivation across two arguments.
+ *
+ * @param {Function|Object} fn            Derivation, or {read, write}.
  * @param {Object}   [options]
  * @param {string}   [options.label]     Debug label.
  * @param {Function} [options.onNotify]  Called when the derived value changes.
+ * @param {Function} [options.write]     Where an assignment should land.
  * @returns {Computation}
+ * @throws {TypeError} when the object form has no `read` function — a
+ *                     construction-time programmer error, not a runtime input.
  */
 export function computed(fn, options = {}) {
+    if (fn !== null && typeof fn === 'object') {
+        const { read, ...rest } = fn;
+        if (typeof read !== 'function') {
+            throw new TypeError('[Domma Reactive] computed({read, write}): `read` must be a function');
+        }
+        return new Computation(read, { ...rest, ...options, effect: false });
+    }
     return new Computation(fn, { ...options, effect: false });
 }
 

@@ -513,3 +513,118 @@ describe('computed().value', () => {
         expect(half.value).toBe(half.get());
     });
 });
+
+// ── Writing through a computed ────────────────────────────────────────────────
+//
+// A computed derives a value, so writing to one is only meaningful if the author
+// says where the write should land. `computed({read, write})` is that statement.
+// Without a `write`, an assignment has nowhere to go and is refused loudly rather
+// than dropped — a two-way binding pointed at a read-only computed would
+// otherwise look wired up and silently discard every keystroke.
+
+describe('writable computed', () => {
+    /** A tracked source, built from DepMap so this file stays graph-only. */
+    function source(initial) {
+        const deps = new DepMap();
+        let held = initial;
+        return {
+            read() { deps.for('v').track(); return held; },
+            write(next) { held = next; deps.trigger('v'); }
+        };
+    }
+
+    it('reads through the object form', () => {
+        const n = source(3);
+        const double = computed({read: () => n.read() * 2});
+        expect(double.value).toBe(6);
+    });
+
+    it('stays lazy in the object form', () => {
+        const body = vi.fn(() => 1);
+        computed({read: body});
+        expect(body).not.toHaveBeenCalled();
+    });
+
+    it('keeps the label given in the object form', () => {
+        const c = computed({read: () => 1, label: 'total'});
+        expect(c.label).toBe('total');
+    });
+
+    it('refuses an object with no read function', () => {
+        expect(() => computed({write: () => {}})).toThrow(TypeError);
+        expect(() => computed({read: 'nope'})).toThrow(TypeError);
+    });
+
+    it('hands an assignment to the write function', () => {
+        const write = vi.fn();
+        const c = computed({read: () => 1, write});
+
+        c.value = 42;
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(write).toHaveBeenCalledWith(42);
+    });
+
+    it('lets the write land where the read came from', () => {
+        const celsius = source(100);
+        const fahrenheit = computed({
+            read: () => celsius.read() * 9 / 5 + 32,
+            write: (f) => celsius.write((f - 32) * 5 / 9)
+        });
+
+        expect(fahrenheit.value).toBe(212);
+
+        fahrenheit.value = 32;
+        expect(fahrenheit.value).toBe(32);
+        expect(celsius.read()).toBe(0);
+    });
+
+    it('offers set() as the same write, for symmetry with an observable', () => {
+        const n = source(1);
+        const c = computed({read: () => n.read(), write: (v) => n.write(v)});
+
+        c.set(9);
+        expect(c.value).toBe(9);
+    });
+
+    it('does not collect dependencies from inside the write', () => {
+        const shown = source(1);
+        const hidden = source(0);
+
+        const c = computed({
+            read: () => shown.read(),
+            write: (v) => { hidden.read(); shown.write(v); }
+        });
+
+        c.get();                       // collects: shown
+        expect(c.deps.size).toBe(1);
+
+        c.value = 5;
+        c.get();                       // recollects: still only shown
+        expect(c.deps.size).toBe(1);
+    });
+
+    it('warns when a read-only computed is assigned, and changes nothing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const c = computed(() => 7);
+
+        expect(c.value).toBe(7);
+        c.value = 99;
+
+        expect(c.value).toBe(7);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('read-only');
+        warn.mockRestore();
+    });
+
+    it('re-runs a dependent effect after a write', async () => {
+        const n = source(1);
+        const c = computed({read: () => n.read(), write: (v) => n.write(v)});
+
+        const seen = [];
+        effect(() => seen.push(c.value));
+
+        c.value = 4;
+        flushSync();
+        expect(seen).toEqual([1, 4]);
+    });
+});

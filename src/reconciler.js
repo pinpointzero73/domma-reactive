@@ -67,6 +67,7 @@ import {createChildContext} from './context.js';
 import {registerBinding} from './handlers.js';
 import {disposeSubtree, registerDisposer, unregisterDisposer} from './lifecycle.js';
 import {rangeNodes} from './nodes.js';
+import {liveItems} from './render.js';
 import {createRuntime} from './runtime.js';
 
 const PREFIX = '[Domma Reactive]';
@@ -313,8 +314,14 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
     const next = new Map();
     const ordered = [];
 
-    for (let index = 0; index < items.length; index++) {
-        const item = items[index];
+    // Applied here rather than in the handler so that every route into a keyed
+    // list agrees — apply-bindings reconciles through this function too, and a
+    // destroyed item that vanished from one path and not the other would be a
+    // difference between server-rendered and compiled markup.
+    const live = liveItems(items);
+
+    for (let index = 0; index < live.length; index++) {
+        const item = live[index];
         let key = resolvePath(item, keyPath);
 
         if (key === null || key === undefined) {
@@ -337,12 +344,12 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
 
         let instance = previous.get(key);
         if (instance === undefined) {
-            instance = createInstance(factory, parentContext, item, index, items.length);
+            instance = createInstance(factory, parentContext, item, index, live.length);
             instance.key = key;
         } else {
             // Claimed. What is left in `previous` afterwards is what has gone.
             previous.delete(key);
-            instance.refresh(parentContext, item, index, items.length);
+            instance.refresh(parentContext, item, index, live.length);
         }
 
         next.set(key, instance);

@@ -6,8 +6,8 @@
  * Design spec §8 requires that Tier 3's four binding kinds — text, attr, block,
  * raw — become "built-in handlers on the new registry, the same mechanism public
  * `registerBinding()` uses". They do, literally: the bottom of this file calls
- * `registerBinding()` eight times through the same exported function a consumer
- * calls, with no privileged flag and no second code path. The ninth built-in,
+ * `registerBinding()` ten times through the same exported function a consumer
+ * calls, with no privileged flag and no second code path. The eleventh built-in,
  * `each`, is registered by template-compiler.js through that same function — it
  * lives elsewhere only because the reconciler needs a compiled block template
  * and this module must not know that templates exist. If the public API could
@@ -15,7 +15,7 @@
  *
  * The one thing a custom binding cannot do is invent `{{ }}` syntax. `text`,
  * `attr`, `block` and `raw` are discovered by the compiler from mustache tokens,
- * which are a fixed grammar; the four behaviour bindings and every custom one
+ * which are a fixed grammar; the six behaviour bindings and every custom one
  * are discovered from an ATTRIBUTE, which is open-ended. That asymmetry is in
  * the syntax, not in the registry — every handler here is the same shape, is
  * dispatched by the same `update()` call, and can be replaced by a consumer.
@@ -62,9 +62,9 @@
  * an empty box until the user types.
  */
 
-import {BLOCKED_KEYS, evaluateAst, readMember} from './expression.js';
-import {CONTEXT_KEYS} from './context.js';
-import {truthy} from './render.js';
+import {BLOCKED_KEYS, compileExpression, evaluateAst, readMember} from './expression.js';
+import {CONTEXT_KEYS, createChildContext} from './context.js';
+import {liveItems, truthy} from './render.js';
 
 const PREFIX = '[Domma Reactive]';
 
@@ -478,6 +478,9 @@ const PROPERTY_FIRST = new Set([
 /** binding → (node → the class tokens this binding last applied). */
 const appliedClasses = new WeakMap();
 
+/** binding → (node → the CSS properties this binding last applied). */
+const appliedStyles = new WeakMap();
+
 /**
  * `data-bind-text="user.name"`, `data-bind-class="active && 'on'"`,
  * `data-bind-disabled="busy"`, `data-bind-aria-label="label"`.
@@ -533,6 +536,10 @@ const bindHandler = {
                 el.textContent = str(value);
             } else if (target === 'class') {
                 applyClasses(binding, el, value);
+            } else if (target === 'style') {
+                applyStyles(binding, el, value);
+            } else if (target.startsWith('style-')) {
+                setStyleProperty(el, target.slice('style-'.length), value);
             } else if (PROPERTY_FIRST.has(target) && target in el) {
                 el[target] = target === 'value' ? str(value) : Boolean(value);
             } else if (value === null || value === undefined || value === false) {
@@ -564,6 +571,250 @@ function applyClasses(binding, el, value) {
     for (const token of tokens) el.classList.add(token);
 
     byNode.set(el, tokens);
+}
+
+/**
+ * Style, in two spellings.
+ *
+ * ── Why not one, the way Knockout has one ────────────────────────────────────
+ *
+ * Knockout writes `style: {color: shade, fontWeight: w}`, which works because it
+ * compiles the binding string with the `Function` constructor and gets object
+ * literals for free. This expression language has no object literal and will not
+ * grow one — parsing `{…}` safely is most of the way to the `eval` this package
+ * exists to avoid. So the two halves are separated:
+ *
+ *   data-bind-style="look"              an object the view model already holds
+ *   data-bind-style-color="shade"       one property, named in the attribute
+ *
+ * The second is the common case, and it is the one Knockout makes awkward — a
+ * single colour there means inventing an object to carry it.
+ *
+ * Property names are kebab-cased in the attribute, because an HTML attribute
+ * name is lowercased by the parser and `data-bind-style-fontWeight` would arrive
+ * as `fontweight`. In an object they may be camelCase, as CSSOM spells them, and
+ * are converted. A custom property (`--brand`) passes through either way.
+ */
+function setStyleProperty(el, property, value) {
+    // Empty string included: `style.setProperty(p, '')` is a removal in CSSOM
+    // anyway, and going through removeProperty says so. Zero is NOT in this
+    // list — `opacity: 0` is a legitimate value, and the falsy check that swept
+    // it away would be a bug an author could not see.
+    if (value === null || value === undefined || value === false || value === '') {
+        el.style.removeProperty(property);
+        return;
+    }
+    el.style.setProperty(property, str(value));
+}
+
+/** camelCase → kebab-case, leaving a custom property untouched. */
+function cssProperty(name) {
+    return name.startsWith('--') ? name : name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+}
+
+/**
+ * Apply an object of CSS properties, removing only the ones this binding put
+ * there last time — the same ownership rule `applyClasses` follows, and for the
+ * same reason: a static `style="margin: 4px"` on the element is not this
+ * binding's to delete.
+ */
+function applyStyles(binding, el, value) {
+    if (value !== null && value !== undefined && typeof value !== 'object') {
+        warnOnce(
+            `bind:style:${binding.id}`,
+            `data-bind-style="${binding.expr}" needs an object of CSS properties — got ` +
+            `${typeof value}. For a single property use data-bind-style-<property>.`
+        );
+        return;
+    }
+
+    let byNode = appliedStyles.get(binding);
+    if (!byNode) appliedStyles.set(binding, (byNode = new WeakMap()));
+
+    const owned = byNode.get(el) || [];
+    const applied = [];
+
+    for (const [key, next] of Object.entries(value || {})) {
+        const property = cssProperty(key);
+        setStyleProperty(el, property, next);
+        applied.push(property);
+    }
+
+    for (const property of owned) {
+        if (!applied.includes(property)) el.style.removeProperty(property);
+    }
+
+    byNode.set(el, applied);
+}
+
+// ── data-options ──────────────────────────────────────────────────────────────
+
+/**
+ * The raw value behind an `<option>`, when it is not a string.
+ *
+ * A Symbol rather than a property name so it cannot collide with anything the
+ * DOM or another library puts on the element, and so it does not serialise.
+ */
+const OPTION_VALUE = Symbol('dm:option-value');
+
+/**
+ * A value `data-model` asked a select to show while no option carried it.
+ *
+ * Attribute order decides which of two bindings on one element runs first, and
+ * `<select data-model="chosen" data-options="cities">` is a perfectly reasonable
+ * thing to write — at which point the model writes a value into a select with no
+ * options at all, and it lands nowhere. Rather than impose an ordering between
+ * binding kinds, the select remembers what it was asked for, and the next
+ * rebuild honours it.
+ *
+ * The same mechanism covers the case ordering could never fix: options that
+ * arrive later, from a fetch, long after the model settled on a value.
+ */
+const PENDING_VALUE = Symbol('dm:pending-value');
+
+/**
+ * `data-options="cities"` → populate a `<select>` from a collection.
+ *
+ * ── Why this exists when {{#each}} already renders a list ────────────────────
+ *
+ * `{{#each cities}}<option>{{.}}</option>{{/each}}` produces the same markup.
+ * What it does not produce is the SELECTION, and that is the whole problem:
+ * rebuilding a select's options resets `value` to the first one, and the
+ * selection lives on the select rather than on any item, so a keyed each has
+ * nothing to preserve it with. This binding rebuilds the list and puts the
+ * selection back, which is the only part an author cannot easily write.
+ *
+ * ── The three companion attributes ───────────────────────────────────────────
+ *
+ *   data-options-text="name"        the label — an expression against the item
+ *   data-options-value="id"         the value — likewise; defaults to the item
+ *   data-options-caption="'Any…'"   a leading blank-valued option
+ *
+ * They are expressions evaluated in a child context, so `$index`, `$parent` and
+ * `$root` all resolve, and `data-options-text="first + ' ' + last"` works.
+ * Knockout takes a property NAME here, which cannot express that. The cost is
+ * that a literal caption needs its quotes — `"'Any…'"` — and that is the price
+ * of every binding value in this package being an expression rather than
+ * sometimes an expression and sometimes a string.
+ *
+ * ── Values that are not strings ──────────────────────────────────────────────
+ *
+ * An `<option>`'s `value` is a string, always. When the resolved value is not
+ * one, the real value is kept on the option under a Symbol and the DOM value
+ * becomes an opaque token, so `data-model` reads back the object or the number
+ * that went in rather than "[object Object]" or "2". See `readFromControl`.
+ */
+const optionsHandler = {
+    attribute: 'data-options',
+    expression: true,
+    tracks: true,
+    primes: true,
+
+    update({binding, nodes, context}) {
+        const items = liveItems(binding.evaluate(context));
+        for (const el of nodes) buildOptions(binding, el, items, context);
+        return true;
+    }
+};
+
+/** Compile a companion attribute, or null when it is absent or unparseable. */
+function optionExpression(el, attribute) {
+    const source = el.getAttribute(attribute);
+    if (source === null || source.trim() === '') return null;
+    return compileExpression(source);
+}
+
+/** What is selected now, as raw values, so it can be restored after a rebuild. */
+function currentSelection(el) {
+    return [...el.options]
+        .filter((option) => option.selected)
+        .map((option) => (OPTION_VALUE in option ? option[OPTION_VALUE] : option.value));
+}
+
+function buildOptions(binding, el, items, context) {
+    if (el.tagName !== 'SELECT') {
+        warnOnce(
+            `options:${binding.id}`,
+            `data-options="${binding.expr}" is on <${el.tagName.toLowerCase()}>, which has no ` +
+            'options. Put it on a <select>.'
+        );
+        return;
+    }
+
+    const textOf    = optionExpression(el, 'data-options-text');
+    const valueOf   = optionExpression(el, 'data-options-value');
+    const captionOf = optionExpression(el, 'data-options-caption');
+
+    // What the rebuild has to put back. A value the model could not apply wins
+    // over what is selected now: the model is the source of truth, and the
+    // current selection is only a browser default if it never got to run.
+    const wanted = PENDING_VALUE in el ? [].concat(el[PENDING_VALUE]) : currentSelection(el);
+
+    el.textContent = '';
+
+    if (captionOf) {
+        const caption = document.createElement('option');
+        caption.value = '';
+        caption.textContent = str(captionOf(context));
+        el.appendChild(caption);
+    }
+
+    items.forEach((item, index) => {
+        const itemContext = createChildContext(context, item, index, items.length);
+        const option = document.createElement('option');
+
+        option.textContent = str(textOf ? textOf(itemContext) : item);
+
+        const value = valueOf ? valueOf(itemContext) : item;
+        if (value === null || value === undefined || typeof value === 'object') {
+            // Opaque on purpose: two items that stringify alike must not become
+            // the same option. The NUL prefix is the same trick the reconciler
+            // uses for a synthesised key — no author-supplied string can collide.
+            option.value = ` opt:${index}`;
+            option[OPTION_VALUE] = value;
+        } else if (typeof value !== 'string') {
+            option.value = str(value);
+            option[OPTION_VALUE] = value;
+        } else {
+            option.value = value;
+        }
+
+        el.appendChild(option);
+    });
+
+    restoreSelection(el, wanted);
+}
+
+/**
+ * Re-select what was selected before, by raw value where there is one.
+ *
+ * A value that no longer has an option is dropped rather than forced, which
+ * leaves the browser's own default (the first option, or the caption) showing —
+ * the honest result when the thing that was chosen is no longer on offer.
+ */
+function restoreSelection(el, wanted) {
+    if (wanted.length === 0) return;
+
+    let matched = false;
+
+    for (const option of el.options) {
+        const raw = OPTION_VALUE in option ? option[OPTION_VALUE] : option.value;
+        const hit = wanted.some((value) => value === raw);
+
+        if (el.multiple) {
+            option.selected = hit;
+            matched = matched || hit;
+        } else if (hit && !matched) {
+            option.selected = true;
+            matched = true;
+        }
+    }
+
+    if (!el.multiple && !matched) el.selectedIndex = el.options.length > 0 ? 0 : -1;
+
+    // Honoured, so stop holding it. Still unmatched means the option has not
+    // arrived yet, and it stays pending for the rebuild that brings it.
+    if (matched) delete el[PENDING_VALUE];
 }
 
 // ── data-model ────────────────────────────────────────────────────────────────
@@ -671,12 +922,30 @@ function readFromControl(el) {
         case 'radio':
             return el.checked ? el.value : NO_WRITE;
         case 'select-multiple':
-            return Array.from(el.options).filter((o) => o.selected).map((o) => o.value);
+            return Array.from(el.options).filter((o) => o.selected).map(optionValue);
+        case 'select':
+            return el.selectedIndex === -1 ? '' : optionValue(el.options[el.selectedIndex]);
         case 'number':
             return el.value === '' ? null : Number(el.value);
         default:
             return el.value;
     }
+}
+
+/**
+ * An option's value as the data saw it.
+ *
+ * `data-options` stashes anything that is not a string, so a select built from
+ * objects or numbers reads back objects or numbers. An option written by hand in
+ * the template has no stash and reads back its string, exactly as before.
+ */
+function optionValue(option) {
+    return OPTION_VALUE in option ? option[OPTION_VALUE] : option.value;
+}
+
+/** The option holding this raw value, by identity. */
+function optionFor(el, value) {
+    return [...el.options].find((option) => optionValue(option) === value) || null;
 }
 
 function writeToControl(el, value) {
@@ -692,11 +961,42 @@ function writeToControl(el, value) {
             return;
         }
         case 'select-multiple': {
-            const wanted = new Set((Array.isArray(value) ? value : []).map(str));
+            const wanted = Array.isArray(value) ? value : [];
+
+            // No options yet — same story as a single select, so remember the
+            // request until they turn up. See PENDING_VALUE.
+            if (el.options.length === 0) {
+                if (wanted.length > 0) el[PENDING_VALUE] = wanted;
+                return;
+            }
+
+            const strings = new Set(wanted.map(str));
             for (const option of el.options) {
-                const next = wanted.has(option.value);
+                const raw = optionValue(option);
+                // Identity first, so an option carrying a stashed object matches
+                // the object itself; string comparison second, so a hand-written
+                // <option value="a"> still matches the string "a".
+                const next = wanted.some((v) => v === raw) || strings.has(option.value);
                 if (option.selected !== next) option.selected = next;
             }
+            return;
+        }
+        case 'select': {
+            const option = optionFor(el, value);
+            if (option) {
+                if (!option.selected) option.selected = true;
+                delete el[PENDING_VALUE];
+                return;
+            }
+
+            const next = str(value);
+            if (el.value !== next) el.value = next;
+
+            // The assignment is ignored by the DOM when no option carries that
+            // value, so this is how "it did not take" is detected. See
+            // PENDING_VALUE for why it is remembered rather than dropped.
+            if (el.value !== next) el[PENDING_VALUE] = value;
+            else delete el[PENDING_VALUE];
             return;
         }
         default: {
@@ -705,6 +1005,101 @@ function writeToControl(el, value) {
         }
     }
 }
+
+// ── data-focus ────────────────────────────────────────────────────────────────
+
+/** Elements this binding is moving focus on right now. */
+const focusing = new WeakSet();
+
+/**
+ * `data-focus="editing"` → two-way binding between the value and focus.
+ *
+ * Knockout calls this `hasFocus`. The name here says which way the arrow points,
+ * and matches `data-model` in being the second of only two two-way bindings in
+ * the package — everything else is a read.
+ *
+ * Both directions earn their place. Data → DOM is how a view model moves the
+ * caret into the field it has just revealed, which otherwise means reaching for
+ * a DOM node from code that should not have one. DOM → data is how it knows
+ * which field the user is in without wiring up focus listeners by hand.
+ *
+ * ── The re-entrancy guard ────────────────────────────────────────────────────
+ *
+ * Calling `focus()` fires a focus event, which writes `true` back to the very
+ * expression that asked for it. With an observable the change gate stops there,
+ * but with a plain object there is no gate, and the write is at best pointless
+ * and at worst a loop through a computed that recomputes on it. The element is
+ * flagged for the duration of the call instead, so the echo is ignored at
+ * source rather than absorbed downstream.
+ *
+ * ── A write-back that cannot land is not fatal ───────────────────────────────
+ *
+ * `data-model` refuses to be one-way: a form control you cannot write through is
+ * broken. Focus is different — `data-focus="isEditing && !isSaving"` is a
+ * perfectly sensible way to drive focus from derived state, and it is only the
+ * write-back that is impossible. So the data → DOM direction keeps working and
+ * the write warns once, naming the expression.
+ */
+const focusHandler = {
+    attribute: 'data-focus',
+    expression: true,
+    tracks: true,
+    primes: true,
+
+    update({binding, nodes, context}) {
+        const wanted = truthy(binding.evaluate(context));
+
+        for (const el of nodes) {
+            if (typeof el.focus !== 'function') continue;
+
+            const has = el.ownerDocument.activeElement === el;
+            if (wanted === has) continue;
+
+            focusing.add(el);
+            try {
+                if (wanted) el.focus();
+                else el.blur();
+            } finally {
+                focusing.delete(el);
+            }
+        }
+
+        return true;
+    },
+
+    attach({binding, node, controller}) {
+        const listener = (event) => {
+            if (focusing.has(node)) return;
+
+            const context = controller.context();
+            const target = resolveWriteTarget(binding.ast, context);
+            if (target === null) {
+                warnOnce(
+                    `focus:${binding.id}:${binding.expr}`,
+                    `data-focus="${binding.expr}" is not a settable path, so focus was not ` +
+                    'written back. Focus still follows the value.'
+                );
+                return;
+            }
+
+            target.object[target.key] = event.type === 'focus';
+        };
+
+        const types = ['focus', 'blur'];
+        for (const type of types) node.addEventListener(type, listener);
+
+        let byBinding = listeners.get(node);
+        if (!byBinding) listeners.set(node, (byBinding = new Map()));
+        byBinding.set(binding.id, {type: types, listener});
+    },
+
+    detach({binding, node}) {
+        const entry = listeners.get(node)?.get(binding.id);
+        if (!entry) return;
+        for (const type of entry.type) node.removeEventListener(type, entry.listener);
+        listeners.get(node).delete(binding.id);
+    }
+};
 
 // ── Registration ──────────────────────────────────────────────────────────────
 //
@@ -719,6 +1114,8 @@ registerBinding('if', ifHandler);
 registerBinding('event', eventHandler);
 registerBinding('bind', bindHandler);
 registerBinding('model', modelHandler);
+registerBinding('options', optionsHandler);
+registerBinding('focus', focusHandler);
 
 /**
  * The kinds registered above, for tests that must notice a built-in going
@@ -726,5 +1123,5 @@ registerBinding('model', modelHandler);
  * promise to consumers.
  */
 export const BUILT_IN_BINDINGS = Object.freeze([
-    'text', 'attr', 'block', 'raw', 'if', 'event', 'bind', 'model'
+    'text', 'attr', 'block', 'raw', 'if', 'event', 'bind', 'model', 'options', 'focus'
 ]);

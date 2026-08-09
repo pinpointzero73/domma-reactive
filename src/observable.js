@@ -15,6 +15,7 @@
 
 import {Dep} from './graph.js';
 import {isEqual} from './equal.js';
+import {applyExtenders} from './extenders.js';
 
 const PREFIX = '[Domma Reactive]';
 
@@ -101,6 +102,59 @@ function subscribers() {
     };
 }
 
+// ── The notification path ─────────────────────────────────────────────────────
+
+/**
+ * The comparator and the announcement, as one replaceable unit.
+ *
+ * Both observables had these inline and identical. They are pulled out here
+ * because an extender needs to *replace* the comparator and *wrap* the
+ * announcement after the observable has been constructed, which a `const equals`
+ * in a closure cannot offer. See extenders.js for what may be done through the
+ * control surface, and why the stored value is not on the list.
+ *
+ * `announce` is read through the closure on every call rather than captured, so
+ * an extender applied later is in the chain for the very next write.
+ *
+ * @param {Object}   options   the observable's construction options
+ * @param {Function} deliver   the unwrapped announcement: (value) => void
+ */
+function notifyPath(options, deliver) {
+    let equals   = options.equals || isEqual;
+    let announce = deliver;
+
+    const control = {
+        /** The public observable. Assigned once it exists; see `attach` below. */
+        observable: null,
+
+        /** Replace the change gate. @param {Function} fn (a, b) => boolean */
+        setEquals(fn) {
+            if (typeof fn !== 'function') {
+                throw new TypeError(`${PREFIX} extend: setEquals expects a function`);
+            }
+            equals = fn;
+        },
+
+        /** Wrap the announcement. @param {Function} wrap (next) => (value) => void */
+        intercept(wrap) {
+            if (typeof wrap !== 'function') {
+                throw new TypeError(`${PREFIX} extend: intercept expects a function`);
+            }
+            announce = wrap(announce);
+        }
+    };
+
+    return {
+        changed: (a, b) => !equals(a, b),
+        announce: (value) => announce(value),
+        /** @param {Object} api the observable the control surface belongs to */
+        attach: (api) => {
+            control.observable = api;
+        },
+        extend: (spec) => applyExtenders(control, spec)
+    };
+}
+
 // ── Scalar ────────────────────────────────────────────────────────────────────
 
 /**
@@ -125,27 +179,35 @@ function subscribers() {
  * @returns {{value: *, peek: Function, set: Function, subscribe: Function}}
  */
 export function observable(initial, options = {}) {
-    const equals = options.equals || isEqual;
     const dep = new Dep();
     const subs = subscribers();
     let current = initial;
 
+    const path = notifyPath(options, (value) => {
+        dep.trigger();
+        subs.notify(value);
+    });
+
     /**
      * Assign, then announce only if the comparator saw a change.
+     *
+     * The assignment is unconditional and immediate even when an extender is
+     * holding the announcement back, so a rate-limited observable still reads
+     * back what was last written to it.
+     *
      * @param {*} next
      */
     const write = (next) => {
-        const changed = !equals(current, next);
+        const changed = path.changed(current, next);
         current = next;
         if (!changed) return;
-        dep.trigger();
-        subs.notify(current);
+        path.announce(current);
     };
 
     // `peek` and `set` are closures rather than methods: they carry no `this`,
     // so they survive being destructured off the observable or handed straight
     // to a callback — both routine for a published API.
-    return {
+    const api = {
         get value() {
             dep.track();
             return current;
@@ -166,8 +228,21 @@ export function observable(initial, options = {}) {
          * @param {Function} fn
          * @returns {Function} unsubscribe, also callable as `.dispose()`
          */
-        subscribe: (fn) => subs.add(fn)
+        subscribe: (fn) => subs.add(fn),
+
+        /**
+         * Layer behaviour onto this observable — see extenders.js.
+         * @param {Object} spec e.g. {rateLimit: 300} or {notify: 'always'}
+         * @returns {Object} this observable, so calls chain
+         */
+        extend: (spec) => {
+            path.extend(spec);
+            return api;
+        }
     };
+
+    path.attach(api);
+    return api;
 }
 
 // ── Array ─────────────────────────────────────────────────────────────────────
@@ -224,21 +299,22 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  *            fill: Function, copyWithin: Function}}
  */
 export function observableArray(initial = [], options = {}) {
-    const equals = options.equals || isEqual;
     const dep = new Dep();
     const subs = subscribers();
     let current = Array.isArray(initial) ? initial.slice() : [];
 
-    /** Announce an in-place mutation to both the graph and the subscribers. */
-    const announce = () => {
+    const path = notifyPath(options, (value) => {
         dep.trigger();
-        subs.notify(current);
-    };
+        subs.notify(value);
+    });
+
+    /** Announce an in-place mutation to both the graph and the subscribers. */
+    const announce = () => path.announce(current);
 
     /** Wholesale replacement: always stores, announces only a real change. */
     const write = (next) => {
         const arr = Array.isArray(next) ? next.slice() : [];
-        const changed = !equals(current, arr);
+        const changed = path.changed(current, arr);
         current = arr;
         if (changed) announce();
     };
@@ -331,6 +407,96 @@ export function observableArray(initial = [], options = {}) {
         },
 
         /**
+         * Where an item sits, by identity. Tracked, because the alternative —
+         * `peek().indexOf(x)` — is the same answer with the dependency silently
+         * dropped, which is the trap `.length` is tracked to avoid.
+         *
+         * @param {*} item
+         * @returns {number} the index, or -1
+         */
+        indexOf: (item) => {
+            dep.track();
+            return current.indexOf(item);
+        },
+
+        /**
+         * Swap the first occurrence of `oldItem` for `newItem`, in place.
+         *
+         * Notifies whether or not anything matched, following the mutator rule
+         * that `remove()` already sets: these are in-place operations, and
+         * gating them on "did anything actually change?" would be a third write
+         * rule bought for one saved microtask.
+         *
+         * @param {*} oldItem matched by identity
+         * @param {*} newItem
+         * @returns {Object} this observableArray, so calls chain
+         */
+        replace: (oldItem, newItem) => {
+            const at = current.indexOf(oldItem);
+            if (at !== -1) current[at] = newItem;
+            announce();
+            return api;
+        },
+
+        /**
+         * Mark items deleted without removing them.
+         *
+         * ── Why this exists, and why it is a shim ────────────────────────────
+         *
+         * Knockout's `destroy()` sets `_destroy: true` on an item and leaves it
+         * in the array, because Rails' `accepts_nested_attributes_for` deletes a
+         * record when the payload it receives carries that flag. The array must
+         * therefore still contain the item at submit time, while no longer
+         * showing it.
+         *
+         * It is supported here because a Knockout view model ported across would
+         * otherwise keep rendering rows the user believes they deleted — a
+         * silent, data-losing difference. `{{#each}}` and `data-each` skip
+         * marked items (see render.js), so the two halves agree.
+         *
+         * Outside that server convention, `remove()` is the right call: it says
+         * what it does, and it does not leave the collection carrying items that
+         * every reader has to know to ignore.
+         *
+         * @param {*|function(*, number): boolean} match a value, or a test
+         * @returns {Object} this observableArray, so calls chain
+         */
+        destroy: (match) => {
+            const test = typeof match === 'function'
+                ? match
+                : (item) => item === match;
+
+            let marked = 0;
+            let skipped = 0;
+
+            for (let i = 0; i < current.length; i++) {
+                if (!test(current[i], i)) continue;
+                // A primitive cannot carry the mark, and coercing it to an
+                // object would replace the item with something that is no
+                // longer `===` to what the caller holds.
+                if (current[i] === null || typeof current[i] !== 'object') {
+                    skipped++;
+                    continue;
+                }
+                current[i]._destroy = true;
+                marked++;
+            }
+
+            if (skipped > 0) {
+                console.warn(
+                    `${PREFIX} destroy: ${skipped} matching item(s) are not objects and ` +
+                    'cannot carry a _destroy mark. Use remove() for an array of primitives.'
+                );
+            }
+
+            if (marked > 0 || skipped === 0) announce();
+            return api;
+        },
+
+        /** Mark every item deleted. See `destroy`. */
+        destroyAll: () => api.destroy(() => true),
+
+        /**
          * Call `fn(array)` on every change — every mutator, and every wholesale
          * assignment that the comparator judged a real change. See the note
          * above `subscribers()`.
@@ -344,8 +510,23 @@ export function observableArray(initial = [], options = {}) {
          * @param {Function} fn
          * @returns {Function} unsubscribe, also callable as `.dispose()`
          */
-        subscribe: (fn) => subs.add(fn)
+        subscribe: (fn) => subs.add(fn),
+
+        /**
+         * Layer behaviour onto this array — see extenders.js. A rate limit
+         * applies to the mutators as well as to wholesale assignment, which is
+         * the point: a loop of pushes announces once.
+         *
+         * @param {Object} spec
+         * @returns {Object} this observableArray, so calls chain
+         */
+        extend: (spec) => {
+            path.extend(spec);
+            return api;
+        }
     };
+
+    path.attach(api);
 
     // In-place mutators: run the native method against the live array, hand
     // back exactly what it returned, and announce the change directly.

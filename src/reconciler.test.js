@@ -997,3 +997,44 @@ describe('compile in reactive mode', () => {
         controller.destroy();
     });
 });
+
+// ── Items marked destroyed ────────────────────────────────────────────────────
+
+describe('keyed list - destroyed items', () => {
+    it('drops a destroyed item from the DOM and disposes its instance', () => {
+        const rows = observableArray([{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}]);
+        const controller = compile(
+            '<ul>{{#each rows key=id}}<li>{{name}}</li>{{/each}}</ul>',
+            {rows: rows.peek()}, host, undefined, {reactive: true}
+        );
+
+        expect(host.querySelectorAll('li')).toHaveLength(2);
+        const baseline = liveComputations();
+
+        const grace = rows.peek()[1];
+        rows.destroy(grace);
+        controller.updateAll({rows: rows.peek()});
+
+        expect(host.querySelectorAll('li')).toHaveLength(1);
+        expect(host.textContent).toContain('Ada');
+        expect(host.textContent).not.toContain('Grace');
+        expect(liveComputations()).toBeLessThan(baseline);
+
+        controller.destroy();
+    });
+
+    it('keeps the node identity of the rows that survive', () => {
+        const rows = observableArray([{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}]);
+        const controller = compile(
+            '<ul>{{#each rows key=id}}<li>{{name}}</li>{{/each}}</ul>',
+            {rows: rows.peek()}, host
+        );
+
+        const ada = host.querySelector('li');
+        rows.destroy(rows.peek()[1]);
+        controller.updateAll({rows: rows.peek()});
+
+        expect(host.querySelector('li')).toBe(ada);
+        controller.destroy();
+    });
+});

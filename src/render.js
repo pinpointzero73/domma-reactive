@@ -113,6 +113,37 @@ export function truthy(value) {
     return Array.isArray(value) ? value.length > 0 : Boolean(value);
 }
 
+/**
+ * The items of a collection that should actually be rendered.
+ *
+ * `observableArray.destroy(item)` marks an item `_destroy: true` and leaves it
+ * in the array, so a form can still submit it to a server that deletes on that
+ * flag. Every render path must agree to skip it, or the user sees rows they
+ * believe they have deleted — so this is exported and the keyed reconciler uses
+ * it too, rather than each implementing `{{#each}}` semantics separately.
+ *
+ * The scan-before-filter is deliberate. Filtering unconditionally would cost an
+ * array copy on every render of every list, for a feature most pages never
+ * touch; scanning costs one property read per item and allocates nothing in the
+ * overwhelmingly common case where nothing is marked.
+ *
+ * @param {*} value the collection expression's value
+ * @returns {Array} the same array when nothing is marked, otherwise a filtered copy
+ */
+export function liveItems(value) {
+    if (!Array.isArray(value)) return [];
+
+    for (let i = 0; i < value.length; i++) {
+        const item = value[i];
+        if (item !== null && typeof item === 'object' && item._destroy === true) {
+            return value.filter(
+                (candidate) => !(candidate !== null && typeof candidate === 'object' && candidate._destroy === true)
+            );
+        }
+    }
+    return value;
+}
+
 /** Walk a dotted path. Missing anywhere along it yields undefined. */
 function resolvePath(data, path) {
     let value = data;
@@ -271,7 +302,7 @@ export function render(template, data = {}, options = {}) {
     } else if (kind === 'unless') {
         middle = truthy(value) ? '' : render(consequent, data, options);
     } else if (kind === 'each') {
-        const items = Array.isArray(value) ? value : [];
+        const items = liveItems(value);
         middle = items
             .map((item, index) => render(consequent, itemContext(item, index, items.length), options))
             .join('');

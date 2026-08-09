@@ -1171,3 +1171,402 @@ describe('an expression attribute is decoded like the HTML it is', () => {
         expect(host.querySelector('a').getAttribute('href')).toBe('/s?a=1&b=2');
     });
 });
+
+// ── data-bind-style ───────────────────────────────────────────────────────────
+//
+// Two spellings, because the expression language has no object literal — it
+// cannot, without becoming the thing a CSP forbids. `data-bind-style="obj"`
+// takes a map from the view model; `data-bind-style-<prop>` names one property
+// in the attribute, where the author would otherwise have had to invent an
+// object to hold a single value.
+
+describe('data-bind-style', () => {
+    it('sets one property named in the attribute', () => {
+        compile('<p data-bind-style-color="shade"></p>', {shade: 'red'}, host);
+        expect(host.querySelector('p').style.color).toBe('red');
+    });
+
+    it('takes a kebab-cased property name', () => {
+        compile('<p data-bind-style-font-weight="w"></p>', {w: 'bold'}, host);
+        expect(host.querySelector('p').style.fontWeight).toBe('bold');
+    });
+
+    it('sets a custom property', () => {
+        compile('<p data-bind-style---brand="c"></p>', {c: '#c00'}, host);
+        expect(host.querySelector('p').style.getPropertyValue('--brand')).toBe('#c00');
+    });
+
+    it('leaves other properties on the element alone', () => {
+        compile('<p style="margin: 4px" data-bind-style-color="shade"></p>', {shade: 'red'}, host);
+        const p = host.querySelector('p');
+        expect(p.style.margin).toBe('4px');
+        expect(p.style.color).toBe('red');
+    });
+
+    it('removes the property when the value is falsy', () => {
+        const ctrl = compile('<p data-bind-style-color="shade"></p>', {shade: 'red'}, host);
+        const p = host.querySelector('p');
+
+        ctrl.updateAll({shade: null});
+        expect(p.style.color).toBe('');
+    });
+
+    it('keeps a legitimate zero', () => {
+        compile('<p data-bind-style-opacity="o"></p>', {o: 0}, host);
+        expect(host.querySelector('p').style.opacity).toBe('0');
+    });
+
+    it('applies every property of an object', () => {
+        compile('<p data-bind-style="look"></p>', {look: {color: 'red', fontWeight: 'bold'}}, host);
+        const p = host.querySelector('p');
+
+        expect(p.style.color).toBe('red');
+        expect(p.style.fontWeight).toBe('bold');
+    });
+
+    it('drops a property that leaves the object', () => {
+        const ctrl = compile('<p data-bind-style="look"></p>', {look: {color: 'red', opacity: '0.5'}}, host);
+        const p = host.querySelector('p');
+
+        ctrl.updateAll({look: {color: 'blue'}});
+        expect(p.style.color).toBe('blue');
+        expect(p.style.opacity).toBe('');
+    });
+
+    it('leaves a static style alone when the object drops a property', () => {
+        const ctrl = compile('<p style="margin: 4px" data-bind-style="look"></p>', {look: {color: 'red'}}, host);
+        const p = host.querySelector('p');
+
+        ctrl.updateAll({look: {}});
+        expect(p.style.margin).toBe('4px');
+        expect(p.style.color).toBe('');
+    });
+
+    it('warns once about a non-object, and writes nothing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<p data-bind-style="look"></p>', {look: 'color: red'}, host);
+
+        expect(host.querySelector('p').style.color).toBe('');
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('data-bind-style');
+        warn.mockRestore();
+    });
+
+    it('treats a null object as nothing to apply, without warning', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<p data-bind-style="look"></p>', {look: null}, host);
+
+        expect(host.querySelector('p').style.cssText).toBe('');
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+});
+
+// ── data-options ──────────────────────────────────────────────────────────────
+//
+// A select's options are a list, so `{{#each}}<option>` renders them perfectly
+// well. This exists for the one thing that does not: the SELECTION. Rebuilding
+// the option list wipes it, and a keyed each cannot help because the selection
+// lives on the parent element rather than on any item. So the binding that
+// rebuilds the list is also the one that puts the selection back.
+
+describe('data-options', () => {
+    it('builds an option per item', () => {
+        compile('<select data-options="cities"></select>', {cities: ['Bath', 'Ely']}, host);
+        const options = [...host.querySelectorAll('option')];
+
+        expect(options.map(o => o.textContent)).toEqual(['Bath', 'Ely']);
+        expect(options.map(o => o.value)).toEqual(['Bath', 'Ely']);
+    });
+
+    it('takes the label and the value from expressions against the item', () => {
+        compile(
+            '<select data-options="rows" data-options-text="name" data-options-value="id"></select>',
+            {rows: [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}]},
+            host
+        );
+        const options = [...host.querySelectorAll('option')];
+
+        expect(options.map(o => o.textContent)).toEqual(['Ada', 'Grace']);
+        expect(options.map(o => o.value)).toEqual(['1', '2']);
+    });
+
+    it('resolves $index inside an option expression', () => {
+        compile(
+            `<select data-options="rows" data-options-text="$index"></select>`,
+            {rows: ['a', 'b']},
+            host
+        );
+        expect([...host.querySelectorAll('option')].map(o => o.textContent)).toEqual(['0', '1']);
+    });
+
+    it('prepends a caption with an empty value', () => {
+        compile(
+            `<select data-options="cities" data-options-caption="'Choose…'"></select>`,
+            {cities: ['Bath']},
+            host
+        );
+        const options = [...host.querySelectorAll('option')];
+
+        expect(options).toHaveLength(2);
+        expect(options[0].textContent).toBe('Choose…');
+        expect(options[0].value).toBe('');
+    });
+
+    it('rebuilds when the collection changes', () => {
+        const ctrl = compile('<select data-options="cities"></select>', {cities: ['Bath']}, host);
+        ctrl.updateAll({cities: ['Bath', 'Ely', 'Wells']});
+
+        expect(host.querySelectorAll('option')).toHaveLength(3);
+    });
+
+    it('keeps the selection across a rebuild when the value survives', () => {
+        const ctrl = compile('<select data-options="cities"></select>', {cities: ['Bath', 'Ely']}, host);
+        const select = host.querySelector('select');
+
+        select.value = 'Ely';
+        ctrl.updateAll({cities: ['Bath', 'Ely', 'Wells']});
+
+        expect(select.value).toBe('Ely');
+    });
+
+    it('skips an item marked destroyed', () => {
+        compile('<select data-options="rows" data-options-text="n"></select>',
+            {rows: [{n: 'a'}, {n: 'b', _destroy: true}]}, host);
+
+        expect([...host.querySelectorAll('option')].map(o => o.textContent)).toEqual(['a']);
+    });
+
+    it('empties the list for a collection that is not an array', () => {
+        const ctrl = compile('<select data-options="cities"></select>', {cities: ['Bath']}, host);
+        ctrl.updateAll({cities: null});
+
+        expect(host.querySelectorAll('option')).toHaveLength(0);
+    });
+
+    it('warns once about an element that is not a select', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<div data-options="cities"></div>', {cities: ['Bath']}, host);
+
+        expect(host.querySelector('div').children).toHaveLength(0);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('data-options');
+        warn.mockRestore();
+    });
+});
+
+describe('data-options with data-model', () => {
+    it('shows the value the model already holds', () => {
+        compile(
+            '<select data-options="cities" data-model="chosen"></select>',
+            {cities: ['Bath', 'Ely'], chosen: 'Ely'},
+            host
+        );
+        expect(host.querySelector('select').value).toBe('Ely');
+    });
+
+    it('shows it when the model attribute comes first', () => {
+        compile(
+            '<select data-model="chosen" data-options="cities"></select>',
+            {cities: ['Bath', 'Ely'], chosen: 'Ely'},
+            host
+        );
+        expect(host.querySelector('select').value).toBe('Ely');
+    });
+
+    it('writes the chosen value back', () => {
+        const data = {cities: ['Bath', 'Ely'], chosen: 'Bath'};
+        compile('<select data-options="cities" data-model="chosen"></select>', data, host);
+
+        const select = host.querySelector('select');
+        select.value = 'Ely';
+        fire(select, 'change');
+
+        expect(data.chosen).toBe('Ely');
+    });
+
+    it('round-trips a non-string option value by identity', () => {
+        const rows = [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}];
+        const data = {rows, chosen: null};
+
+        compile(
+            '<select data-options="rows" data-options-text="name" data-model="chosen"></select>',
+            data, host
+        );
+
+        const select = host.querySelector('select');
+        select.selectedIndex = 1;
+        fire(select, 'change');
+
+        expect(data.chosen).toBe(rows[1]);      // the object, not "[object Object]"
+    });
+
+    it('shows the option whose item the model holds', () => {
+        const rows = [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}];
+        compile(
+            '<select data-options="rows" data-options-text="name" data-model="chosen"></select>',
+            {rows, chosen: rows[1]}, host
+        );
+
+        expect(host.querySelector('select').selectedIndex).toBe(1);
+    });
+
+    it('keeps a numeric option value a number on the way back', () => {
+        const data = {rows: [{id: 1, name: 'Ada'}, {id: 2, name: 'Grace'}], chosen: null};
+        compile(
+            '<select data-options="rows" data-options-text="name" data-options-value="id" data-model="chosen"></select>',
+            data, host
+        );
+
+        const select = host.querySelector('select');
+        select.value = '2';
+        fire(select, 'change');
+
+        expect(data.chosen).toBe(2);
+    });
+});
+
+describe('data-options arriving late', () => {
+    it('applies a model value chosen before the options loaded', () => {
+        const ctrl = compile(
+            '<select data-model="chosen" data-options="cities"></select>',
+            {cities: [], chosen: 'Ely'},
+            host
+        );
+        const select = host.querySelector('select');
+        expect(select.options).toHaveLength(0);
+
+        ctrl.updateAll({cities: ['Bath', 'Ely'], chosen: 'Ely'});
+        expect(select.value).toBe('Ely');
+    });
+
+    it('does the same for a multiple select', () => {
+        const ctrl = compile(
+            '<select multiple data-model="chosen" data-options="cities"></select>',
+            {cities: [], chosen: ['Ely']},
+            host
+        );
+        const select = host.querySelector('select');
+
+        ctrl.updateAll({cities: ['Bath', 'Ely'], chosen: ['Ely']});
+        expect([...select.selectedOptions].map(o => o.value)).toEqual(['Ely']);
+    });
+
+    it('stops holding the value once it has been applied', () => {
+        const ctrl = compile(
+            '<select data-model="chosen" data-options="cities"></select>',
+            {cities: [], chosen: 'Ely'},
+            host
+        );
+        const select = host.querySelector('select');
+
+        ctrl.updateAll({cities: ['Bath', 'Ely'], chosen: 'Ely'});
+
+        // The user picks something else; a later rebuild must respect that
+        // rather than snapping back to the value that was once pending.
+        select.value = 'Bath';
+        fire(select, 'change');
+        ctrl.updateAll({cities: ['Bath', 'Ely', 'Wells'], chosen: 'Bath'});
+
+        expect(select.value).toBe('Bath');
+    });
+});
+
+// ── data-focus ────────────────────────────────────────────────────────────────
+//
+// Knockout's `hasFocus`, under a name that says which way the arrow points.
+// Two-way, because both directions are the point: a view model that can move
+// focus to the field it just revealed, and one that knows which field the user
+// is in without listening for events itself.
+
+describe('data-focus', () => {
+    it('focuses the element when the value starts true', () => {
+        compile('<input data-focus="editing">', {editing: true}, host);
+        expect(document.activeElement).toBe(host.querySelector('input'));
+    });
+
+    it('leaves it alone when the value starts false', () => {
+        compile('<input data-focus="editing">', {editing: false}, host);
+        expect(document.activeElement).not.toBe(host.querySelector('input'));
+    });
+
+    it('focuses when the value becomes true', () => {
+        const ctrl = compile('<input data-focus="editing">', {editing: false}, host);
+        ctrl.updateAll({editing: true});
+        expect(document.activeElement).toBe(host.querySelector('input'));
+    });
+
+    it('blurs when the value becomes false', () => {
+        const ctrl = compile('<input data-focus="editing">', {editing: true}, host);
+        const input = host.querySelector('input');
+        expect(document.activeElement).toBe(input);
+
+        ctrl.updateAll({editing: false});
+        expect(document.activeElement).not.toBe(input);
+    });
+
+    it('does not re-focus an element that already has focus', () => {
+        const ctrl = compile('<input data-focus="editing">', {editing: true}, host);
+        const input = host.querySelector('input');
+        const focus = vi.spyOn(input, 'focus');
+
+        ctrl.updateAll({editing: true});
+        expect(focus).not.toHaveBeenCalled();
+    });
+
+    it('writes true back when the user focuses the field', () => {
+        const data = {editing: false};
+        compile('<input data-focus="editing">', data, host);
+
+        host.querySelector('input').focus();
+        expect(data.editing).toBe(true);
+    });
+
+    it('writes false back when the field loses focus', () => {
+        const data = {editing: true};
+        compile('<input data-focus="editing">', data, host);
+
+        host.querySelector('input').blur();
+        expect(data.editing).toBe(false);
+    });
+
+    it('drives an observable through .value', () => {
+        const editing = observable(false);
+        compile('<input data-focus="editing.value">', {editing}, host, undefined, {reactive: true});
+
+        host.querySelector('input').focus();
+        expect(editing.peek()).toBe(true);
+    });
+
+    it('warns once when the expression cannot be written through', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<input data-focus="a && b">', {a: false, b: false}, host);
+
+        const input = host.querySelector('input');
+        input.focus();
+        input.blur();
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('data-focus');
+        warn.mockRestore();
+    });
+
+    it('still moves focus for an expression it cannot write through', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        compile('<input data-focus="a && b">', {a: true, b: true}, host);
+
+        expect(document.activeElement).toBe(host.querySelector('input'));
+        warn.mockRestore();
+    });
+
+    it('stops listening once the controller is destroyed', () => {
+        const data = {editing: false};
+        const ctrl = compile('<input data-focus="editing">', data, host);
+        const input = host.querySelector('input');
+
+        ctrl.destroy();
+        input.focus();
+
+        expect(data.editing).toBe(false);
+    });
+});

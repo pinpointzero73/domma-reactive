@@ -8,6 +8,61 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.5.0] - 2026-08-09
+
+Closes the remaining functional gaps against Knockout. Everything below was reachable
+before only by writing it yourself; nothing that already worked has changed.
+
+### Added
+
+- **Extenders.** `observable().extend({…})` and the same on `observableArray`, with
+  `rateLimit` (both of Knockout's methods — `notifyWhenChangesStop` and
+  `notifyAtFixedRate`), `throttle` as Knockout's older name for it, and
+  `notify: 'always'`. `registerExtender()` / `unregisterExtender()` open the same
+  mechanism to consumers, exactly as `registerBinding()` does for bindings.
+
+  Unlike Knockout's original `throttle`, **the write is never delayed** — only the
+  notification. A rate-limited observable always reads back what was last written to it,
+  which is the bug that made Knockout deprecate `throttle` in the first place.
+
+- **Writable computeds.** `computed({read, write})`. This is what lets `data-model` bind
+  a derived value; assigning to a computed without a `write` now warns and names it,
+  rather than storing into the read cache where the next recompute would drop it.
+
+- **`observableArray.indexOf`, `.replace`, `.destroy`, `.destroyAll`** — the rest of
+  Knockout's array vocabulary. `destroy()` marks an item `_destroy: true` and leaves it
+  in the collection, for servers that delete on that flag; `{{#each}}`, `data-each` and
+  `data-options` all skip a marked item, so the collection and what is on screen agree.
+
+- **`data-bind-style`**, in two spellings: `data-bind-style-color="shade"` for one
+  property (kebab-cased, custom properties included) and `data-bind-style="look"` for an
+  object of them. Ownership works as `data-bind-class` does — only the properties this
+  binding set last time are removed, so a static `style=` attribute survives.
+
+- **`data-options`**, with `data-options-text`, `data-options-value` and
+  `data-options-caption`, for populating a `<select>`. The three companions are
+  expressions against the item rather than property names, so a computed label works.
+  Option values that are not strings round-trip through `data-model` by identity instead
+  of arriving back as `"[object Object]"`, and a value the model chose before its option
+  existed is applied by the rebuild that brings it — so attribute order does not matter,
+  and neither does a collection that arrives from a fetch.
+
+- **`data-focus`** — Knockout's `hasFocus`, two-way. An expression it cannot write
+  through still drives focus, and warns about only the write-back.
+
+- **Virtual bindings in `applyBindings`** — `<!-- dm if: x -->` … `<!-- /dm -->`, plus
+  `each` and `text`. Knockout's `<!-- ko -->`, and the one thing `applyBindings` could
+  not express: a run of `<li>`s or `<td>`s with no spare element to hang an attribute on.
+  They nest, and an `if` holds its nodes aside as a fragment rather than as a list, so a
+  nested block that changes while its parent is closed still lands correctly when the
+  parent reopens.
+
+### Changed
+
+- `readFromControl` on a `<select>` now returns the option's underlying value where
+  `data-options` supplied one. A hand-written `<option value="a">` still reads back the
+  string `"a"`, so this is additive.
+
 ## [0.4.2] - 2026-08-06
 
 ### Added
@@ -96,6 +151,7 @@ contemporaneous notes.
 - Packaged as UMD, CommonJS and ESM, with `verify-dist` checking every declared entry point loads the
   way a real consumer would before publishing.
 
+[0.5.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.0
 [0.4.2]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.2
 [0.4.1]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.1
 [0.4.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.0

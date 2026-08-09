@@ -4,7 +4,7 @@
  * Compiles a mustache template into a set of *fine-grained* bindings, each of
  * which owns a small piece of the DOM and can be updated independently.
  *
- * Nine binding kinds, five from mustache syntax and four from attributes:
+ * Eleven binding kinds, five from mustache syntax and six from attributes:
  *
  *   text   {{name}}                  → a <span> anchor; updated via textContent
  *   attr   class="{{cls}}"           → the owning element; updated via setAttribute
@@ -16,8 +16,10 @@
  *   bind   data-bind-text="name"     → a property, attribute or class
  *   model  data-model="query"        → two-way, control ↔ data
  *   if     data-if="isOpen"          → the element is in the DOM, or it is not
+ *   options data-options="cities"    → the options of a <select>
+ *   focus  data-focus="editing"      → two-way, value ↔ focus
  *
- * None of those nine is special to this file. Every one is a handler in the
+ * None of those eleven is special to this file. Every one is a handler in the
  * registry in handlers.js, registered through the same public `registerBinding()`
  * a consumer calls; this module finds them in the template, prepares what they
  * need, and dispatches. Adding a tenth is a `registerBinding()` call with an

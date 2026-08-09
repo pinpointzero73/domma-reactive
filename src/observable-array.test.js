@@ -276,3 +276,121 @@ describe('remove() accepts a test function', () => {
         expect(items.value).toEqual([1, 2]);
     });
 });
+
+// ── The rest of the array vocabulary ─────────────────────────────────────────
+//
+// `indexOf` and `replace` are ordinary array work that a caller would otherwise
+// do through `peek()`, losing the notification. `destroy` is a compatibility
+// shim for payloads that expect a deletion to be *marked* rather than performed;
+// see the note on it in observable.js.
+
+describe('observableArray.indexOf', () => {
+    it('finds an item by identity', () => {
+        const a = {id: 1};
+        const rows = observableArray([{id: 0}, a]);
+        expect(rows.indexOf(a)).toBe(1);
+    });
+
+    it('reports -1 for an item that is not there', () => {
+        expect(observableArray([1, 2]).indexOf(9)).toBe(-1);
+    });
+
+    it('is tracked, so a reader re-runs when the array moves', async () => {
+        const a = {id: 1};
+        const rows = observableArray([a]);
+        const seen = [];
+
+        effect(() => seen.push(rows.indexOf(a)));
+        expect(seen).toEqual([0]);
+
+        rows.unshift({id: 0});
+        await tick();
+        expect(seen).toEqual([0, 1]);
+    });
+});
+
+describe('observableArray.replace', () => {
+    it('swaps the first occurrence in place', () => {
+        const a = {id: 1};
+        const b = {id: 2};
+        const rows = observableArray([a, {id: 3}, a]);
+
+        rows.replace(a, b);
+        expect(rows.peek()).toEqual([b, {id: 3}, a]);
+    });
+
+    it('notifies', async () => {
+        const a = {id: 1};
+        const rows = observableArray([a]);
+        const seen = [];
+
+        effect(() => seen.push(rows.value.length));
+        rows.replace(a, {id: 2});
+        await tick();
+
+        expect(seen).toHaveLength(2);
+    });
+
+    it('leaves the array alone when the old item is absent', () => {
+        const rows = observableArray([1, 2]);
+        rows.replace(9, 3);
+        expect(rows.peek()).toEqual([1, 2]);
+    });
+
+    it('chains', () => {
+        const rows = observableArray([1]);
+        expect(rows.replace(1, 2)).toBe(rows);
+    });
+});
+
+describe('observableArray.destroy', () => {
+    it('marks the item rather than removing it', () => {
+        const a = {id: 1};
+        const rows = observableArray([a, {id: 2}]);
+
+        rows.destroy(a);
+        expect(rows.peek()).toHaveLength(2);
+        expect(a._destroy).toBe(true);
+    });
+
+    it('takes a test, as remove() does', () => {
+        const rows = observableArray([{id: 1}, {id: 2}]);
+        rows.destroy(r => r.id === 2);
+
+        expect(rows.peek()[0]._destroy).toBeUndefined();
+        expect(rows.peek()[1]._destroy).toBe(true);
+    });
+
+    it('marks every item under destroyAll', () => {
+        const rows = observableArray([{id: 1}, {id: 2}]);
+        rows.destroyAll();
+        expect(rows.peek().every(r => r._destroy === true)).toBe(true);
+    });
+
+    it('skips a primitive, which has nowhere to carry the mark', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const rows = observableArray([1, 2]);
+
+        rows.destroy(1);
+        expect(rows.peek()).toEqual([1, 2]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        warn.mockRestore();
+    });
+
+    it('notifies', async () => {
+        const a = {id: 1};
+        const rows = observableArray([a]);
+        const seen = [];
+
+        effect(() => seen.push(rows.value.length));
+        rows.destroy(a);
+        await tick();
+
+        expect(seen).toHaveLength(2);
+    });
+
+    it('chains', () => {
+        const rows = observableArray([{id: 1}]);
+        expect(rows.destroyAll()).toBe(rows);
+    });
+});

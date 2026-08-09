@@ -250,3 +250,50 @@ describe('parity with Domma utils.render', () => {
         clearExpressionCache();
     });
 });
+
+// ── Items marked destroyed ────────────────────────────────────────────────────
+//
+// `observableArray.destroy(item)` leaves the item in the collection carrying
+// `_destroy: true`, so a form can still submit it to a server that deletes on
+// that flag. A renderer that showed it anyway would put rows on screen the user
+// believes they have deleted, so both render paths skip it — here, and in the
+// keyed reconciler.
+
+describe('render - destroyed items', () => {
+    it('skips an item marked _destroy', () => {
+        const data = {rows: [{name: 'Ada'}, {name: 'Grace', _destroy: true}, {name: 'Katherine'}]};
+        expect(render('{{#each rows}}[{{name}}]{{/each}}', data)).toBe('[Ada][Katherine]');
+    });
+
+    it('renumbers @index and @last around the gap', () => {
+        const data = {rows: [{n: 'a'}, {n: 'b', _destroy: true}, {n: 'c'}]};
+        expect(render('{{#each rows}}{{@index}}{{n}}{{#if @last}}!{{/if}}{{/each}}', data))
+            .toBe('0a1c!');
+    });
+
+    it('renders an all-destroyed collection as empty', () => {
+        const data = {rows: [{n: 'a', _destroy: true}]};
+        expect(render('{{#each rows}}[{{n}}]{{/each}}', data)).toBe('');
+    });
+
+    it('leaves a falsy _destroy alone', () => {
+        const data = {rows: [{n: 'a', _destroy: false}]};
+        expect(render('{{#each rows}}[{{n}}]{{/each}}', data)).toBe('[a]');
+    });
+
+    it('does not copy the array when nothing is destroyed', () => {
+        // The filter is the cost every list would otherwise pay for a feature
+        // most pages never use, so it runs only when something is marked.
+        const rows = [{n: 'a'}, {n: 'b'}];
+        const seen = [];
+        const proxied = new Proxy(rows, {
+            get(t, k) {
+                if (k === 'filter') seen.push('filter');
+                return Reflect.get(t, k);
+            }
+        });
+
+        render('{{#each rows}}{{n}}{{/each}}', {rows: proxied});
+        expect(seen).toEqual([]);
+    });
+});

@@ -71,6 +71,8 @@ const EXPECTED = [
     'renderTemplate',
     'registerBinding',
     'unregisterBinding',
+    'registerExtender',
+    'unregisterExtender',
     'createRootContext',
     'createChildContext',
     'applyBindings'

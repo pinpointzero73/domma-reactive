@@ -1,6 +1,6 @@
 {
   "name": "domma-reactive",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Dependency-tracked reactivity and fine-grained DOM bindings. The reactive core of Domma, usable standalone.",
   "type": "module",
   "main": "./dist/domma-reactive.cjs",

@@ -40,6 +40,7 @@ import {createChildContext, createRootContext} from './context.js';
 import {registerBinding, unregisterBinding} from './handlers.js';
 import {render as renderTemplate} from './render.js';
 import {applyBindings} from './apply-bindings.js';
+import {registerExtender, unregisterExtender} from './extenders.js';
 
 const SURFACE = [
     'Computation', 'Dep', 'DepMap', 'TemplateCompiler',
@@ -49,8 +50,9 @@ const SURFACE = [
     'effect', 'evaluateAst', 'evaluateExpression', 'expressionDependencies',
     'flushSync', 'isEqual',
     'observable', 'observableArray', 'parseExpression', 'registerBinding',
-    'registerHelper', 'renderTemplate',
-    'scanBlocks', 'trackingProxy', 'unregisterBinding', 'unregisterHelper', 'untracked'
+    'registerExtender', 'registerHelper', 'renderTemplate',
+    'scanBlocks', 'trackingProxy', 'unregisterBinding', 'unregisterExtender',
+    'unregisterHelper', 'untracked'
 ];
 
 /**
@@ -115,6 +117,8 @@ describe('public API', () => {
         expect(api.createChildContext, 'createChildContext').toBe(createChildContext);
         expect(api.registerBinding, 'registerBinding').toBe(registerBinding);
         expect(api.unregisterBinding, 'unregisterBinding').toBe(unregisterBinding);
+        expect(api.registerExtender, 'registerExtender').toBe(registerExtender);
+        expect(api.unregisterExtender, 'unregisterExtender').toBe(unregisterExtender);
         expect(api.renderTemplate, 'renderTemplate').toBe(renderTemplate);
         expect(api.applyBindings, 'applyBindings').toBe(applyBindings);
     });

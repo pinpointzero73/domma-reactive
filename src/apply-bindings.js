@@ -80,6 +80,7 @@ import {toContext} from './context.js';
 import {effect} from './graph.js';
 import {bindingHandler, claimAttribute} from './handlers.js';
 import {compileExpression, expressionDependencies, parseExpression} from './expression.js';
+import {rangeNodes} from './nodes.js';
 import {reconcile} from './reconciler.js';
 import {render as defaultRender, truthy} from './render.js';
 import {eachFactory} from './template-compiler.js';
@@ -91,6 +92,22 @@ const EACH_ATTRIBUTE = 'data-each';
 
 /** `items key=id` */
 const EACH_VALUE = /^([\s\S]*?)\s+key\s*=\s*([A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*$/;
+
+/**
+ * A virtual binding: `<!-- dm if: open -->` … `<!-- /dm -->`.
+ *
+ * Knockout spells it `<!-- ko if: open -->`. The concept is the one thing
+ * applyBindings genuinely could not express: a binding attribute needs an
+ * element to live on, and a run of `<li>`s or `<td>`s has no spare element to
+ * give it. Wrapping them in a `<div>` to carry the attribute changes the layout,
+ * and inside a table it is not even valid HTML that a browser will keep.
+ *
+ * `compile()` has never needed this — `{{#if}}` already delimits a region with
+ * comments of its own. This is for markup that arrived from a server, where the
+ * author cannot add mustache and has only comments to work with.
+ */
+const VIRTUAL_OPEN = /^\s*dm\s+([a-zA-Z][\w-]*)\s*:\s*([\s\S]+?)\s*$/;
+const VIRTUAL_CLOSE = /^\s*\/dm\s*$/;
 
 /** A text node that looks like it was expecting interpolation. */
 const LOOKS_INTERPOLATED = /\{\{\s*[\w$][\w$.]*\s*\}\}/;
@@ -136,6 +153,54 @@ function walk(root, onElement) {
     if (root === null || root === undefined || root.nodeType !== 1) return;
     if (onElement(root) === false) return;
     for (const child of [...root.children]) walk(child, onElement);
+}
+
+/**
+ * Find every `<!-- dm kind: expr -->` … `<!-- /dm -->` pair in a subtree.
+ *
+ * Pairing is per parent and stack-based, so a nested pair binds to its own
+ * closer rather than to the first one that comes along. The result is in
+ * document order of the OPENING comment, which puts an enclosing block before
+ * the blocks inside it — the order they have to be wired in, since wiring the
+ * outer one may detach the inner one's anchors.
+ *
+ * @param {Element} root
+ * @param {Function} onUnclosed (block) => void
+ * @returns {Array<{kind, expr, open, close, parent, seq}>}
+ */
+function virtualBlocks(root, onUnclosed) {
+    const found = [];
+    let seq = 0;
+
+    const visit = (parent) => {
+        const stack = [];
+
+        for (const node of [...parent.childNodes]) {
+            if (node.nodeType === 8) {
+                if (VIRTUAL_CLOSE.test(node.data)) {
+                    const opener = stack.pop();
+                    if (opener !== undefined) found.push({...opener, close: node});
+                    continue;
+                }
+
+                const match = node.data.match(VIRTUAL_OPEN);
+                if (match !== null) {
+                    stack.push({kind: match[1], expr: match[2], open: node, parent, seq: seq++});
+                }
+                continue;
+            }
+
+            if (node.nodeType === 1) visit(node);
+        }
+
+        for (const orphan of stack) onUnclosed(orphan);
+    };
+
+    visit(root);
+
+    // Pushed on the CLOSING comment, so an inner pair completes first. Sorting
+    // by the opener's sequence puts them back into the nesting order.
+    return found.sort((a, b) => a.seq - b.seq);
 }
 
 /**
@@ -199,6 +264,24 @@ export function applyBindings(data, rootElement, options = {}) {
         bindings: []
     };
 
+    // ---- Pass 0: virtual blocks --------------------------------------------
+    //
+    // Before the element walk, because a virtual list's body is lifted out of
+    // the document here. Leaving it in place would have the walk below bind the
+    // TEMPLATE — the same rule `data-each` follows by not descending into its
+    // own element.
+    const virtual = virtualBlocks(rootElement, (orphan) => {
+        warnOnce(
+            `virtual:unclosed:${label}:${orphan.kind}`,
+            `<!-- dm ${orphan.kind}: ${orphan.expr} --> in ${label} has no matching ` +
+            '<!-- /dm -->, so the block was skipped. Every virtual binding needs a closer.'
+        );
+    });
+
+    for (const block of virtual) {
+        if (block.kind === 'each') liftVirtualBody(block, virtual);
+    }
+
     // ---- Pass 1: find the work, before touching anything --------------------
     //
     // Collected up front so that a `data-if` which starts out false does not
@@ -248,6 +331,8 @@ export function applyBindings(data, rootElement, options = {}) {
         if (item.each !== null) wireEach(item.el, item.each);
         for (const claim of item.claims) wireClaim(item.el, claim);
     }
+
+    for (const block of virtual) wireVirtual(block);
 
     /** Compile the expression half of a binding, or null if it will not parse. */
     function prepare(source, handler, where) {
@@ -430,6 +515,191 @@ export function applyBindings(data, rootElement, options = {}) {
             reconcile({open, close}, [], eachFactory(binding, render), keyPath, context, label);
             el.replaceChildren();
         });
+    }
+
+    /**
+     * Take a virtual list's body out of the document and keep it as source.
+     *
+     * The nodes between the anchors are the item template, exactly as a
+     * `data-each` element's contents are, and they must be gone before the
+     * element walk runs or the walk would bind the template instead of the
+     * items. Moving them into a holder rather than reading `outerHTML` off each
+     * one keeps text and comment nodes intact, and gives the serialised source
+     * in the same step.
+     */
+    function liftVirtualBody(block, all) {
+        const holder = document.createElement('div');
+        for (const node of rangeNodes(block.open, block.close)) holder.appendChild(node);
+        block.body = holder.innerHTML;
+
+        // A virtual block inside this body went with it. It cannot be wired —
+        // its anchors are no longer in the document — and the compiler does not
+        // read `<!-- dm -->` out of a lifted template, so it is not silently
+        // handled elsewhere either.
+        for (const other of all) {
+            if (other === block || !holder.contains(other.open)) continue;
+            other.consumed = true;
+            warnOnce(
+                `virtual:nested:${label}:${other.kind}`,
+                `<!-- dm ${other.kind}: ${other.expr} --> is inside a virtual list's body, ` +
+                'which is compiled as a template — virtual bindings are not read there. ' +
+                `Use {{#${other.kind}}} inside the body, or data-if on an element.`
+            );
+        }
+    }
+
+    /** Dispatch one virtual block to its implementation. */
+    function wireVirtual(block) {
+        if (block.consumed === true) return;
+
+        if (block.kind === 'if') {
+            wireVirtualIf(block);
+        } else if (block.kind === 'each') {
+            wireVirtualEach(block);
+        } else if (block.kind === 'text') {
+            wireVirtualText(block);
+        } else {
+            warnOnce(
+                `virtual:kind:${block.kind}`,
+                `<!-- dm ${block.kind}: … --> is not a virtual binding. ` +
+                'Supported: if, each, text. Anything else needs an element to bind to.'
+            );
+        }
+    }
+
+    /**
+     * A virtual `if`: the run of nodes between the anchors is in the document,
+     * or it is held aside.
+     *
+     * Held in a DocumentFragment rather than an array, which matters more than
+     * it looks. The nodes stay SIBLINGS in the fragment, so a nested virtual
+     * block inside a hidden one can still find its own range and go on
+     * hiding and showing within it. Detached into an array they would each lose
+     * their siblings, the inner block's range would come back empty, and its
+     * content would reappear on the outer block's next show whatever its own
+     * condition said.
+     */
+    function wireVirtualIf(block) {
+        const prepared = prepare(block.expr, {expression: true, tracks: true}, '<!-- dm if -->');
+        if (prepared === null) return;
+
+        const binding = {
+            id: `apply${seq++}_if`,
+            kind: 'if',
+            expr: block.expr,
+            ast: prepared.ast,
+            evaluate: prepared.evaluate,
+            deps: prepared.deps,
+            nodes: [{open: block.open, close: block.close}]
+        };
+        controller.bindings.push(binding);
+
+        /** @type {DocumentFragment|null} the nodes while they are out of the document */
+        let held = null;
+
+        const show = () => {
+            if (held === null) return;
+            block.close.parentNode?.insertBefore(held, block.close);
+            held = null;
+        };
+
+        track(() => {
+            if (truthy(binding.evaluate(context))) {
+                show();
+            } else if (held === null) {
+                held = document.createDocumentFragment();
+                for (const node of rangeNodes(block.open, block.close)) held.appendChild(node);
+            }
+            return true;
+        });
+
+        // Leave the markup as it was found.
+        teardowns.push(show);
+    }
+
+    /** A virtual keyed list, reconciled between the author's own comments. */
+    function wireVirtualEach(block) {
+        const parsed = block.expr.match(EACH_VALUE);
+        if (parsed === null || parsed[1].trim() === '') {
+            warnOnce(
+                `virtual:each:unkeyed:${label}`,
+                `<!-- dm each: ${block.expr} --> needs a key: write ` +
+                `<!-- dm each: ${block.expr.trim()} key=id -->, naming whichever property ` +
+                'identifies an item. Without one there is nothing to reconcile against.'
+            );
+            return;
+        }
+
+        const collection = parsed[1].trim();
+        const keyPath = parsed[2];
+
+        const prepared = prepare(collection, {expression: true, tracks: true}, '<!-- dm each -->');
+        if (prepared === null) return;
+
+        const binding = {
+            id: `apply${seq++}_each`,
+            kind: 'each',
+            expr: collection,
+            keyPath,
+            body: block.body,
+            ast: prepared.ast,
+            evaluate: prepared.evaluate,
+            deps: prepared.deps,
+            factoryBox: {value: null, options: {template: label}},
+            nodes: [{open: block.open, close: block.close}]
+        };
+        controller.bindings.push(binding);
+
+        const handler = bindingHandler('each');
+        track(() => handler.update({
+            binding,
+            nodes: binding.nodes,
+            context,
+            render,
+            controller
+        }));
+
+        teardowns.push(() => {
+            reconcile(
+                {open: block.open, close: block.close}, [],
+                eachFactory(binding, render), keyPath, context, label
+            );
+        });
+    }
+
+    /**
+     * A virtual `text`: one text node between the anchors, owned by the binding.
+     *
+     * Whatever the server put there is placeholder content — it is what the page
+     * showed before the data arrived — so it is replaced rather than appended to.
+     */
+    function wireVirtualText(block) {
+        const prepared = prepare(block.expr, {expression: true, tracks: true}, '<!-- dm text -->');
+        if (prepared === null) return;
+
+        for (const node of rangeNodes(block.open, block.close)) node.parentNode?.removeChild(node);
+
+        const text = document.createTextNode('');
+        block.close.parentNode?.insertBefore(text, block.close);
+
+        const binding = {
+            id: `apply${seq++}_text`,
+            kind: 'text',
+            expr: block.expr,
+            ast: prepared.ast,
+            evaluate: prepared.evaluate,
+            deps: prepared.deps,
+            nodes: [text]
+        };
+        controller.bindings.push(binding);
+
+        track(() => {
+            const value = binding.evaluate(context);
+            text.data = value === null || value === undefined ? '' : String(value);
+            return true;
+        });
+
+        teardowns.push(() => text.parentNode?.removeChild(text));
     }
 
     /** Create an effect and remember it, so `dispose()` can find it again. */
