@@ -8,6 +8,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.5.1] - 2026-08-09
+
+Documentation only. No change to any bundle beyond its version banner.
+
+### Added
+
+- **`Tutorial.md`** — a contacts page built in ten steps: add, edit in place, search, filter
+  by group, delete, empty state, `localStorage`, disposal. It meets each of 0.5.0's features
+  at the point someone building something would reach for it.
+
+  Its listings are not illustrative. `src/tutorial.test.js` is the finished `index.html` body
+  and `app.js` transcribed rather than paraphrased, driven through `applyBindings` against
+  jsdom — so a change to the package that breaks the tutorial goes red like anything else.
+
+- The tutorial now ships in the package rather than living on GitHub alone. Adding it to
+  `files` is why this release exists: 0.5.0's tarball was already published, and npm does not
+  allow a republish.
+
 ## [0.5.0] - 2026-08-09
 
 Closes the remaining functional gaps against Knockout. Everything below was reachable
@@ -151,6 +169,7 @@ before only by writing it yourself; nothing that already worked has changed.
 - Packaged as UMD, CommonJS and ESM, with `verify-dist` checking every declared entry point loads the
   way a real consumer would before publishing.
 
+[0.5.1]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.1
 [0.5.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.0
 [0.4.2]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.2
 [0.4.1]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.1
