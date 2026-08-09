@@ -15,8 +15,12 @@ strict Content Security Policy — `script-src 'self'`, no `unsafe-eval`.
 This is the reactive core of [Domma](https://github.com/pinpointzero73/domma), published separately so it can be used on
 its own.
 
+**New here?** [**Tutorial.md**](Tutorial.md) builds a working contacts page step by step — add, edit in place, search,
+filter, delete and persist, in about 120 lines. Every listing in it is under test.
+
 ## Contents
 
+- [Tutorial](Tutorial.md) — build a contacts system, step by step
 - [Install](#install) · [Quick start](#quick-start) · [A complete small app](#a-complete-small-app)
 - [Reactive core](#reactive-core) — [`observable`](#observable) · [`observableArray`](#observablearray) ·
   [`computed`](#computed) · [extenders](#extenders) · [`effect`](#effect) · [`subscribe`](#subscribe) ·
@@ -1189,7 +1193,7 @@ serve it. `registerBinding()` is the seam a host builds its own on.
 
 ```bash
 npm test           # watch
-npm run test:run   # once — 793 tests
+npm run test:run   # once — 807 tests, including the finished app from Tutorial.md
 npm run build      # dist/
 npm run test:dist  # verify all 31 exports through require(), import() and <script>
 ```

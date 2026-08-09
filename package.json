@@ -14,7 +14,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist/", "README.md", "LICENSE"],
+  "files": ["dist/", "README.md", "Tutorial.md", "LICENSE"],
   "scripts": {
     "build": "rollup -c",
     "test": "vitest",
