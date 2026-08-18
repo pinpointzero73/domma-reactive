@@ -145,8 +145,108 @@ describe('§5: the four names resolve outside a block too', () => {
 });
 
 describe('CONTEXT_KEYS', () => {
-    it('lists exactly the five names, and nothing has drifted', () => {
+    it('lists exactly the seven names, and nothing has drifted', () => {
         expect([...CONTEXT_KEYS].sort())
-            .toEqual(['$data', '$index', '$length', '$parent', '$root']);
+            .toEqual([
+                '$data', '$index', '$length', '$parent',
+                '$parentContext', '$parents', '$root'
+            ]);
+    });
+});
+
+describe('$parentContext', () => {
+    it('is null at the root', () => {
+        expect(createRootContext({a: 1}).$parentContext).toBeNull();
+    });
+
+    it('is the enclosing context one level down', () => {
+        const root = createRootContext({a: 1});
+        expect(createChildContext(root, {b: 2}).$parentContext).toBe(root);
+    });
+
+    it('promotes plain data to a root context first', () => {
+        const child = createChildContext({a: 1}, {b: 2});
+        expect(child.$parentContext.$data).toEqual({a: 1});
+        expect(child.$parentContext.$parentContext).toBeNull();
+    });
+
+    it('chains, so two levels are reachable', () => {
+        const root = createRootContext({a: 1});
+        const one = createChildContext(root, {b: 2});
+        const two = createChildContext(one, {c: 3});
+
+        expect(two.$parentContext).toBe(one);
+        expect(two.$parentContext.$parentContext).toBe(root);
+    });
+});
+
+describe('$parents', () => {
+    it('is empty at the root', () => {
+        expect(createRootContext({a: 1}).$parents).toEqual([]);
+    });
+
+    it('holds the parent data one level down', () => {
+        const root = createRootContext({a: 1});
+        expect(createChildContext(root, {b: 2}).$parents).toEqual([{a: 1}]);
+    });
+
+    it('is nearest-first, three levels deep', () => {
+        const root = createRootContext({n: 'root'});
+        const one = createChildContext(root, {n: 'one'});
+        const two = createChildContext(one, {n: 'two'});
+        const three = createChildContext(two, {n: 'three'});
+
+        expect(three.$parents.map((d) => d.n)).toEqual(['two', 'one', 'root']);
+    });
+
+    it('agrees with $parent below the root', () => {
+        const root = createRootContext({a: 1});
+        const one = createChildContext(root, {b: 2});
+        const two = createChildContext(one, {c: 3});
+
+        expect(one.$parents[0]).toBe(one.$parent);
+        expect(two.$parents[0]).toBe(two.$parent);
+    });
+
+    it('is the one place the two disagree at the root', () => {
+        const root = createRootContext({a: 1});
+        expect(root.$parent).toBeNull();
+        expect(root.$parents[0]).toBeUndefined();
+    });
+
+    it('reaches $root data at the far end', () => {
+        const root = createRootContext({n: 'root'});
+        const two = createChildContext(createChildContext(root, {n: 'one'}), {n: 'two'});
+        expect(two.$parents[two.$parents.length - 1]).toBe(two.$root);
+    });
+
+    it('yields undefined past the end rather than throwing', () => {
+        const child = createChildContext(createRootContext({}), {});
+        expect(child.$parents[99]).toBeUndefined();
+    });
+
+    it('is frozen, at the root and below it', () => {
+        const child = createChildContext(createRootContext({}), {});
+        expect(Object.isFrozen(child.$parents)).toBe(true);
+        expect(Object.isFrozen(createRootContext({}).$parents)).toBe(true);
+    });
+
+    it('is memoised — the same context returns the same array', () => {
+        const child = createChildContext(createRootContext({}), {});
+        expect(child.$parents).toBe(child.$parents);
+    });
+
+    it('does not share an array between sibling contexts', () => {
+        const root = createRootContext({});
+        expect(createChildContext(root, {n: 'a'}).$parents)
+            .not.toBe(createChildContext(root, {n: 'b'}).$parents);
+    });
+
+    it('is lazy — a getter, not an eager field', () => {
+        const child = createChildContext(createRootContext({}), {});
+        const descriptor = Object.getOwnPropertyDescriptor(child, '$parents');
+
+        expect(typeof descriptor.get).toBe('function');
+        expect(descriptor.enumerable).toBe(true);
     });
 });

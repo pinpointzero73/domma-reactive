@@ -24,9 +24,22 @@
  * the names exist to reach data one level up, and making them contexts would
  * force every template that uses them to write `$parent.$data.name`.
  *
- * The cost is that there is no `$parents[2]`. Two levels up is not reachable in
- * M3. If it turns out to be wanted, it is an additive field on this object and
- * nothing else in the package changes.
+ * The cost was that two levels up could not be reached at all. `$parents` fixes
+ * that without disturbing the rule: it is an array of ancestor DATA, nearest
+ * first, so `$parents[1].name` reads a grandparent's field with no `$data` in
+ * sight. `$parent` and `$parents[0]` are the same value everywhere below the
+ * root.
+ *
+ * ── $parentContext, for what $parents cannot carry ───────────────────────────
+ *
+ * Data one level up is not the only thing a nested block wants. "Which row of
+ * the OUTER list am I in?" is a question about position, and position lives on
+ * the context, not on the data — so no amount of ancestor data answers it.
+ *
+ * `$parentContext` is the enclosing context itself, and it is the one name here
+ * that IS a context. `$parentContext.$index` is the question above, answered.
+ * Knockout has both names, for both reasons, and arrived at them the same way
+ * round.
  *
  * ── Contexts are frozen ──────────────────────────────────────────────────────
  *
@@ -61,7 +74,40 @@
  * It is `null` outside a list, exactly as `$index` is, so the §5 rule that every
  * context name resolves everywhere still holds.
  */
-export const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index', '$length']);
+export const CONTEXT_KEYS = new Set([
+    '$data', '$root', '$parent', '$index', '$length', '$parents', '$parentContext'
+]);
+
+/**
+ * The root's `$parents`, which is always empty.
+ *
+ * Shared across every root context, which is safe precisely because it is both
+ * empty and frozen: there is nothing to tell two of them apart, and nothing that
+ * could ever write to one.
+ */
+const NO_PARENTS = Object.freeze([]);
+
+/**
+ * Ancestor data, nearest first.
+ *
+ * Walks the `$parentContext` chain on demand rather than accumulating an array
+ * on the way down, so a context that is never asked for its ancestry never
+ * builds one. Most never are — `$parents` is a name for the awkward case, while
+ * a keyed list creates a context per item per render whether any template
+ * mentions it or not.
+ *
+ * Frozen for the reason contexts are frozen: it is a statement about where an
+ * expression sits, not scratch space. `resolveWriteTarget` refuses to write
+ * through anything frozen, so `$parents[0] = x` warns rather than throwing.
+ *
+ * @param {Object} ctx
+ * @returns {Array} frozen
+ */
+function buildParents(ctx) {
+    const out = [];
+    for (let c = ctx.$parentContext; c !== null; c = c.$parentContext) out.push(c.$data);
+    return Object.freeze(out);
+}
 
 /**
  * The top-level context for a data object.
@@ -75,7 +121,8 @@ export const CONTEXT_KEYS = new Set(['$data', '$root', '$parent', '$index', '$le
  */
 export function createRootContext(data) {
     return Object.freeze({
-        $data: data, $root: data, $parent: null, $index: null, $length: null
+        $data: data, $root: data, $parent: null, $index: null, $length: null,
+        $parents: NO_PARENTS, $parentContext: null
     });
 }
 
@@ -99,13 +146,28 @@ export function createRootContext(data) {
  */
 export function createChildContext(parent, data, index = null, length = null) {
     const base = toContext(parent);
-    return Object.freeze({
+    let parents = null;
+
+    const ctx = {
         $data: data,
         $root: base.$root,
         $parent: base.$data,
         $index: index === undefined ? null : index,
-        $length: length === undefined ? null : length
+        $length: length === undefined ? null : length,
+        $parentContext: base
+    };
+
+    // Defined rather than assigned so it can be a getter, and enumerable so a
+    // context still spreads and serialises exactly as it did. Freezing does not
+    // stop the closure variable being written, so the memo survives it.
+    Object.defineProperty(ctx, '$parents', {
+        enumerable: true,
+        get() {
+            return parents ??= buildParents(ctx);
+        }
     });
+
+    return Object.freeze(ctx);
 }
 
 /**
