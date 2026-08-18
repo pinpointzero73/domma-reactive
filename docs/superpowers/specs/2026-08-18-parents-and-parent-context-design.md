@@ -52,10 +52,16 @@ Ancestor data, nearest first, matching Knockout exactly:
 
 | Expression | Value |
 |---|---|
-| `$parents[0]` | identical to `$parent`, always |
+| `$parents[0]` | identical to `$parent`, at every depth below the root |
 | `$parents` at the root | `[]` |
+| `$parents[0]` at the root | `undefined`, where `$parent` is `null` |
 | `$parents[$parents.length - 1]` | `$root`'s data, at depth ≥ 1 |
 | `$parents[99]` | `undefined` — ordinary array indexing, which never throws |
+
+The root is the one place the two disagree, and neither value is worth changing to make them
+agree: `$parent` is `null` there because §5 requires every context name to resolve everywhere, and
+`$parents[0]` is `undefined` because that is what indexing past the end of an empty array gives.
+Knockout has the same seam. A template that cares should test `$parents.length`.
 
 Both are frozen. Both join `CONTEXT_KEYS`.
 
@@ -176,9 +182,12 @@ At this repository's ratio, roughly 150–250 test lines.
 - `$parents[0]` is identical to `$parent`, at every depth
 - three levels deep: `$parents` is `[level2, level1, root]` in that order
 - `$parents` is frozen, and so is the root's
-- the getter is memoised — two reads return the same array instance
-- nothing is allocated when the name is unread (assert via a context whose `$parentContext` chain
-  would throw if walked, or by spying on the walk)
+- the getter is memoised — `ctx.$parents === ctx.$parents` for the same context
+- two sibling contexts do not share an array — `a.$parents !== b.$parents` where both are `[root]`
+- the root's `$parents` is the shared frozen empty constant, which is safe precisely because it is
+  both empty and frozen
+- `Object.getOwnPropertyDescriptor(ctx, '$parents').get` is a function, proving it is not eagerly
+  built, and `enumerable` is true so a context still spreads and serialises as it did
 - end to end through a nested keyed list: `$parents[1].name` and `$parentContext.$index` both render
 - `$parents[99]` renders empty rather than throwing
 - every row of the writes table above, each warning fired exactly once
