@@ -201,6 +201,35 @@ it without knowing it is there.
   already-registered markup.
 - **`$parents[n]`.** Unrelated to components, and separately listed as a gap.
 
+## Documentation is part of the deliverable
+
+Components are not finished when they pass their tests. Both documents that make a promise about
+working code have to make it about components too, and both are on the test path — which is why
+none of this can be written before the feature exists.
+
+**`README.md`**
+
+- A `## Components` section after [Keyed lists](#), covering both param spellings, the factory
+  shape, `$component`, dynamic names, and disposal.
+- Add it to the Contents list.
+- The migration table: `component:` / `ko.components` moves from **not yet** to the real spelling.
+- Limits and non-goals: components come out of the gap list; **slots stay**, restated as the one
+  remaining piece.
+- The opening: `## What it does` gains a components item, and `## What it isn't` loses "no component
+  model" from its list — the line flagged when that section was written as the first thing needing
+  revisiting if components landed.
+
+**`Tutorial.md`**
+
+- A new step extracting the contact row into a `contact-card` component, which is the natural
+  demonstration: the row already has an item context, a two-way `data-model`, and an edit-in-place
+  state that wants to be private to the row rather than held on the list.
+- `## The finished files` updated to match.
+- `src/tutorial.test.js` extended to transcribe it, exactly as it transcribes every other step. The
+  tutorial is only allowed to claim what that file proves.
+
+**`CHANGELOG.md`** — an entry, as every feature release has.
+
 ## Testing
 
 At the ratio the repository already holds itself to (`reconciler.js`: 408 source, 1040 test), expect
