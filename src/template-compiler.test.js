@@ -15,7 +15,7 @@
 // contract the compiler actually depends on. Anything these tests prove holds
 // for any renderer meeting it.
 
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
 import {render} from './support/mini-render.js';
 import {clearExpressionCache} from './expression.js';
@@ -433,5 +433,33 @@ describe('template-compiler - behaviour bindings share an element marker', () =>
 
         expect(blocks).toEqual(['0_blk', '1_blk']);
         expect(bindings.find(b => b.kind === 'if').id).toBe('2_if');
+    });
+});
+
+describe('data-each is not a compiler binding', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('warns once when a compiled template carries data-each', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate('<ul data-each="rows key=id"><li>x</li></ul>');
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('data-each');
+        expect(warn.mock.calls[0][0]).toContain('{{#each rows key=id}}');
+    });
+
+    it('warns for a data-each nested inside a keyed block body', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate('{{#each groups key=id}}<ol data-each="members key=id"><li>x</li></ol>{{/each}}');
+
+        expect(warn).toHaveBeenCalled();
+        expect(warn.mock.calls.some((c) => c[0].includes('data-each'))).toBe(true);
+    });
+
+    it('says nothing about a template with no data-each', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate('{{#each rows key=id}}<li>{{name}}</li>{{/each}}');
+
+        expect(warn).not.toHaveBeenCalled();
     });
 });

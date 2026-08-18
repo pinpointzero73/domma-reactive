@@ -87,6 +87,19 @@ const INTERP = /\{\{(?!\{)\s*([^#/>!{}][^{}]*?)\s*\}\}/g;
 /** Partial reference: {{> name}} */
 const PARTIAL = /\{\{>\s*[^{}]+?\s*\}\}/;
 
+/**
+ * A `data-each` attribute, and whatever it was given.
+ *
+ * `data-each` is an applyBindings spelling, implemented directly there. The
+ * compiler discovers lists from `{{#each}}` only, so the attribute is inert in
+ * anything this module annotates — including a keyed block body, which is where
+ * it bites: an author nests one list inside another, the inner attribute is left
+ * exactly as written, and the bindings inside it quietly resolve against the
+ * OUTER item. Nothing was wrong enough to say anything about, which is the
+ * problem. See the warning in `annotate`.
+ */
+const EACH_ATTRIBUTE = /\sdata-each\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+
 /** Opening HTML tag, tolerating quoted attribute values that contain > */
 const OPEN_TAG = /<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
 
@@ -685,6 +698,20 @@ export function annotate(rawTemplate, options = {}) {
         const where = options.template ? ` in template "${options.template}"` : '';
         console.warn(`${PREFIX} ${message}${where}`);
     };
+
+    // Said before anything is compiled, because the alternative is silence: an
+    // inert data-each renders its item template once, as ordinary markup, and
+    // looks close enough to working to survive review.
+    const inertEach = EACH_ATTRIBUTE.exec(rawTemplate);
+    if (inertEach !== null) {
+        const expr = inertEach[1] ?? inertEach[2] ?? '';
+        warn(
+            'inert-each',
+            `data-each="${expr}" does nothing here. It is an applyBindings spelling, and this ` +
+            `is compiled markup — write {{#each ${expr}}} … {{/each}} instead. A data-each ` +
+            'nested inside another list is compiled markup too, which is the usual way to meet this'
+        );
+    }
 
     // ── Pass 1: wrap every region with comment anchors ────────────────────
     //

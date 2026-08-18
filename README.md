@@ -35,7 +35,7 @@ first one keeps its actual DOM node, so its focus, its scroll position and its h
 **One broken binding never takes the page down.** A binding whose expression will not parse logs a single warning naming
 the expression and the template, and is skipped. Everything else keeps working.
 
-About **18 KB gzipped**, with no dependencies, MIT-licensed, and 807 tests.
+About **18 KB gzipped**, with no dependencies, MIT-licensed, and 842 tests.
 
 ## What it isn't
 
@@ -87,7 +87,7 @@ Or as a plain script — the UMD bundle exposes the global `DommaReactive`:
 |------|--------|------|
 | `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 54 KB, **18 KB gzipped** |
 | `dist/domma-reactive.cjs` | UMD — `require()` | 54 KB |
-| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 280 KB (comments intact; your bundler minifies) |
+| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 283 KB (comments intact; your bundler minifies) |
 
 The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
 Node or a worker. Only the compiler functions touch `document`, and only when called.
@@ -798,9 +798,21 @@ them works; see [Keyed lists](#keyed-lists).
 `{{> partial}}` inside a keyed block is not expanded. The block body is compiled once into a `<template>`, before any
 render pass exists to resolve a partial against. Inline it, and the compiler says so if you do not.
 
-A `data-each` nested inside another `data-each` is not expanded by `applyBindings` — the inner attribute is left as
-written and the bindings inside it resolve against the *outer* item. Nest with `{{#each}}` through `compile()` instead,
-which does reconcile at any depth.
+`data-each` is an `applyBindings` spelling, and the one place it does **not** work is inside another list. A list's item
+template is compiled markup — the same compiler `compile()` uses — and the compiler discovers lists from `{{#each}}`
+only. A nested `data-each` is therefore inert: the attribute is left as written and the bindings inside it resolve
+against the *outer* item. It warns, naming the mustache form to use instead.
+
+Nest with `{{#each}}`, which reconciles at any depth and works inside a `data-each` body — mustache is meaningful there
+precisely because that body is compiled:
+
+```html
+<ul data-each="groups key=id">
+    <li>
+        {{#each members key=id}}<b>{{name}} — {{$parentContext.$index}}</b>{{/each}}
+    </li>
+</ul>
+```
 
 ## Keyed lists
 
@@ -1233,7 +1245,7 @@ Every one of these was hit while building the example app above.
 | Effects keep running after the DOM is gone | Nothing disposed them | `handle.dispose()` / `controller.destroy()` |
 | Mutating an object and reassigning it does nothing | The change gate compares old and new — the same reference | Produce a new value |
 | `data-model="$parents[0]"` warns and does nothing | `$parents` and every context are frozen | Bind ancestor *data*: `$parents[1].name` |
-| A nested `data-each` renders its template unexpanded | `applyBindings` does not expand a `data-each` inside a `data-each` | Nest with `{{#each}}` through `compile()` |
+| A nested `data-each` renders its template unexpanded, with a warning | A list's item template is compiled markup, and the compiler knows `{{#each}}`, not `data-each` | Nest with `{{#each}}`, which works inside a `data-each` body |
 
 Nothing in the binding layer throws on bad input. Every failure above logs exactly one warning, naming the expression
 and the template, and skips that binding alone — one broken binding does not take the rest of the page down with it.
@@ -1262,7 +1274,7 @@ that ignores the host competes with it; one that defers to the host needs a seam
 
 ```bash
 npm test           # watch
-npm run test:run   # once — 807 tests, including the finished app from Tutorial.md
+npm run test:run   # once — 842 tests, including the finished app from Tutorial.md
 npm run build      # dist/
 npm run test:dist  # verify all 31 exports through require(), import() and <script>
 ```

@@ -955,3 +955,46 @@ describe('ancestor names on server-rendered markup', () => {
             .toEqual(['Contacts', 'Contacts']);
     });
 });
+
+describe('a nested data-each says so instead of failing quietly', () => {
+    it('warns, naming the mustache form that does work', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const host = document.createElement('div');
+        host.innerHTML =
+            '<ul data-each="groups key=id"><li>' +
+            '<ol data-each="members key=id"><li><b data-bind-text="name"></b></li></ol>' +
+            '</li></ul>';
+        document.body.appendChild(host);
+
+        applyBindings({groups: [{id: 1, name: 'Family', members: [{id: 11, name: 'Ada'}]}]}, host);
+        flushSync();
+
+        const said = warn.mock.calls.map((c) => c[0]).join('\n');
+        expect(said).toContain('data-each="members key=id"');
+        expect(said).toContain('{{#each members key=id}}');
+
+        vi.restoreAllMocks();
+    });
+
+    it('and the mustache form it names actually works, at depth, with the new names', () => {
+        const host = document.createElement('div');
+        host.innerHTML =
+            '<ul data-each="groups key=id"><li>' +
+            '{{#each members key=id}}<b>{{$parents[1].title}}/{{$parentContext.$index}}</b>{{/each}}' +
+            '</li></ul>';
+        document.body.appendChild(host);
+
+        applyBindings({
+            title: 'Contacts',
+            groups: [
+                {id: 1, name: 'Family', members: [{id: 11, name: 'Ada'}]},
+                {id: 2, name: 'Work', members: [{id: 21, name: 'Grace'}, {id: 22, name: 'Alan'}]}
+            ]
+        }, host);
+        flushSync();
+
+        expect([...host.querySelectorAll('b')].map((n) => n.textContent))
+            .toEqual(['Contacts/0', 'Contacts/1', 'Contacts/1']);
+    });
+});
