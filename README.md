@@ -1,19 +1,48 @@
 # domma-reactive
 
-Keep a page in step with your data, without a build step and without a framework. Change a value; the pieces of the page
-that show it update, and nothing else does.
+**domma-reactive is a small JavaScript library that keeps HTML in step with your data.**
 
-About **15 KB gzipped**, with **no dependencies** and **no `eval`**.
-
-Under the surface: derivations discover at runtime which state they actually read, so a write re-runs exactly the work
-that depends on it. Keyed lists *reconcile* — a row that stays in the collection keeps its actual DOM nodes, so its
-focus, its half-typed input and its scroll position survive a change to the list around it.
-
-The expression language is parsed by hand rather than compiled with the `Function` constructor, so bindings work under a
-strict Content Security Policy — `script-src 'self'`, no `unsafe-eval`.
+You write the relationship down once — `data-bind-text="user.name"` in your markup, or `computed(() => price.value *
+qty.value)` in your code — and it maintains it from then on. Change the data; exactly the parts of the page that depend
+on it update. There is no update code to write, no re-render to trigger and no build step: a `<script>` tag on a page
+your server already rendered is enough.
 
 This is the reactive core of [Domma](https://github.com/pinpointzero73/domma), published separately so it can be used on
 its own.
+
+## What it does
+
+**Data changes, the page follows.** Assign to `count.value` and every binding that read it re-runs — once, on the next
+microtask, however many writes led there.
+
+**Derived values that work out their own inputs.** `computed(() => price.value * qty.value)` discovers at runtime which
+state it actually read, so it recalculates when the price changes and sits still when anything else does.
+
+**Bindings live in your HTML.** `data-bind-text`, `data-on-click`, `data-if`, `data-each` —
+[eleven kinds](#eleven-binding-kinds), on markup your server already rendered.
+[`applyBindings(data, element)`](#applybindingsdata-rootelement) activates them in place; it never rewrites your page.
+
+**Forms bind both ways.** [`data-model="query"`](#data-model) on a text input, checkbox, radio or `<select multiple>`
+keeps the control and the data in step in both directions, with no change handler to write. [`data-focus`](#data-focus)
+does the same for which element is focused.
+
+**Lists keep their DOM.** [`data-each="rows key=id"`](#keyed-lists) reconciles by key: delete the second row and the
+first one keeps its actual DOM node, so its focus, its scroll position and its half-typed input all survive.
+
+**It runs where `eval` is banned.** Binding expressions are [parsed by hand](#expressions) rather than compiled with the
+`Function` constructor, so the whole library works under `script-src 'self'` with no `unsafe-eval`.
+
+**One broken binding never takes the page down.** A binding whose expression will not parse logs a single warning naming
+the expression and the template, and is skipped. Everything else keeps working.
+
+About **18 KB gzipped**, with no dependencies, MIT-licensed, and 807 tests.
+
+## What it isn't
+
+It is not a framework. There is no router, no component model, no lifecycle hooks, no virtual DOM and no devtools — if
+you want those, reach for React, Vue or Svelte. This is the layer beneath: reactivity and bindings, to drop into a page
+you already have, or to build something larger on top of. [Limits and non-goals](#limits-and-non-goals) lists every
+omission and the reasoning for it.
 
 **New here?** [**Tutorial.md**](Tutorial.md) builds a working contacts page step by step — add, edit in place, search,
 filter, delete and persist, in about 120 lines. Every listing in it is under test.
@@ -56,9 +85,9 @@ Or as a plain script — the UMD bundle exposes the global `DommaReactive`:
 
 | File | Format | Size |
 |------|--------|------|
-| `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 44 KB, **15 KB gzipped** |
-| `dist/domma-reactive.cjs` | UMD — `require()` | 44 KB |
-| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 235 KB (comments intact; your bundler minifies) |
+| `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 54 KB, **18 KB gzipped** |
+| `dist/domma-reactive.cjs` | UMD — `require()` | 54 KB |
+| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 280 KB (comments intact; your bundler minifies) |
 
 The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
 Node or a worker. Only the compiler functions touch `document`, and only when called.
@@ -739,7 +768,8 @@ them works; see [Keyed lists](#keyed-lists).
 `{{> partial}}` inside a keyed block is not expanded. The block body is compiled once into a `<template>`, before any
 render pass exists to resolve a partial against. Inline it, and the compiler says so if you do not.
 
-There is no `$parents[2]`: `$parent` reaches one level up, and no further.
+There is no `$parents[2]` yet: `$parent` reaches one level up, and no further — see
+[Limits and non-goals](#limits-and-non-goals).
 
 ## Keyed lists
 
@@ -1144,8 +1174,8 @@ deliberate rather than incidental.
 | `ko.cleanNode(el)` | `handle.dispose()` |
 | `$data` `$root` `$parent` `$index` | identical |
 | `html: markup` | **none** — `{{{triple-stache}}}`, which says so where you can see it |
-| `$parents[2]` | **none** — `$parent` reaches one level |
-| `component:` / `ko.components` | **none** — see [Limits](#limits-and-non-goals) |
+| `$parents[2]` | **not yet** — `$parent` reaches one level; see [Limits](#limits-and-non-goals) |
+| `component:` / `ko.components` | **not yet** — see [Limits](#limits-and-non-goals) |
 
 The three differences worth knowing before you start:
 
@@ -1176,18 +1206,25 @@ and the template, and skips that binding alone — one broken binding does not t
 
 ## Limits and non-goals
 
-This is a reactivity and binding layer. It is **not** a framework: there is no router, no component model, no
-lifecycle hooks, no server-side-rendering hydration beyond `applyBindings`, and no devtools.
+This is a reactivity and binding layer. It is **not** a framework: there is no router, no lifecycle hooks, no
+server-side-rendering hydration beyond `applyBindings`, and no devtools.
 
-Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `$parents[n]`, no `data-bind-html`, no
-observable unwrapping, no `eval`-backed expressions, no object literals in a binding, and no minimal-move list
-reconciliation yet.
+Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `data-bind-html`, no observable
+unwrapping, no `eval`-backed expressions, no object literals in a binding, and no minimal-move list reconciliation yet.
+None of these is waiting on anything. The spellings here differ from Knockout's on purpose and will go on differing.
 
-The one substantial thing Knockout has and this does not is **components** — `ko.components.register`, the `component:`
-binding, `$component`, `$componentTemplateNodes`. That is a component model, and a component model is a framework
-decision: it settles how a unit of UI is registered, parameterised, given a lifecycle and torn down, and every host that
-embeds this package already has answers to those questions. Building one here would compete with its host rather than
-serve it. `registerBinding()` is the seam a host builds its own on.
+**Two things are gaps rather than choices**, and the difference matters: a spelling that differs is settled, but a
+capability Knockout has and this does not is a to-do.
+
+**`$parents[n]`.** `$parent` reaches one level up and no further, so a binding nested three collections deep cannot see
+past its immediate owner. Knockout's `$parents` array can. This one is small.
+
+**Components.** The one substantial thing Knockout has and this does not **yet** — `ko.components.register`, the
+`component:` binding, `$component`, `$componentTemplateNodes`. It is open rather than settled. What makes it hard is not
+the rendering but the decisions around it: a component model settles how a unit of UI is registered, parameterised,
+given a lifecycle and torn down, and every host that embeds this package already has answers to those questions. A model
+that ignores the host competes with it; one that defers to the host needs a seam neither has designed yet.
+`registerBinding()` is that seam today, and a host can build its own on it.
 
 ## Development
 
