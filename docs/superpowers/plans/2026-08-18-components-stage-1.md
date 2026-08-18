@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Ships as:** 0.7.0. The roadmap agreed on 2026-08-18 is 0.6.0 `$parents[n]`, **0.7.0 components**, 0.8.0 slots, 1.0.0 Knockout parity complete. Build 0.6.0 first — this plan assumes `$parents[n]` has already shipped.
+
 **Goal:** Add a component model to domma-reactive — `registerComponent()`, a `data-component` binding, params in both spellings, view-model lifecycle, `$component`, and dynamic component swapping — closing the last substantial capability gap against Knockout apart from slots.
 
 **Architecture:** Components reuse the keyed-list machinery almost entirely. A component instance *is* a `createInstance()` instance: a cloned template, its own child context, its own effects, an anchored region, and node-scoped disposal. The new code is a registry, a params collector, a context field, and one binding handler. The handler follows the `each` seam exactly — `src/components.js` knows nothing about templates, and `template-compiler.js` hands it a factory-builder, so the dependency runs one way and no cycle is created.
@@ -1404,34 +1406,82 @@ git commit -m "docs: add a components step to the tutorial, transcribed into its
 
 ---
 
-### Task 13: Changelog and release readiness
+### Task 13: Changelog, and release 0.7.0
 
 **Files:**
 - Modify: `CHANGELOG.md`
+- Modify: `package.json`, `package-lock.json` (via `make bump`)
 
-- [ ] **Step 1: Write the entry**
+The release process is scripted and its order matters. `preflight` runs *after* the bump is
+committed, because it checks the version about to be published rather than the last one. npm will
+not reuse a version number, so everything below is cheaper to get right now than after.
 
-Match the shape of the existing entries. Cover: `registerComponent` / `unregisterComponent`, `data-component`, both param spellings, `$component`, dynamic swapping, and the two things still missing — slots and `$parents[n]`.
-
-- [ ] **Step 2: Final verification**
-
-```bash
-npm run test:run
-npm run test:dist
-```
-
-Expected: both pass.
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 1: Bump**
 
 ```bash
-git add CHANGELOG.md
-git commit -m "docs: changelog for components"
+make bump V=0.7.0
 ```
 
-Do not bump the version or publish. Releases are their own commit in this repository, and that is the author's call.
+Expected: `0.6.x → 0.7.0  (package.json, package-lock.json)`. It deliberately does not commit.
 
----
+- [ ] **Step 2: Write the changelog entry**
+
+`## [0.7.0] - YYYY-MM-DD` at the top of `CHANGELOG.md`, in the shape of the existing entries —
+`### Added` / `### Changed`, prose that says why rather than only what. Cover `registerComponent`
+and `unregisterComponent`, `data-component`, both param spellings and the merge rule, by-reference
+versus by-value, `$component`, dynamic names and swapping, view-model `dispose()`, and the two
+things still missing: slots and (if it has not shipped) `$parents[n]`.
+
+- [ ] **Step 3: Commit the bump and the entry together**
+
+```bash
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "Release 0.7.0 — components"
+```
+
+The message should say what the release contains. A Makefile cannot write that, which is why
+`bump` does not commit.
+
+- [ ] **Step 4: Preflight**
+
+```bash
+make preflight
+```
+
+Expected: `preflight: clean, not behind origin, 0.7.0 unpublished, artefacts verified`, and
+`all 33 exports verified across require(), import() and <script>`. Thirty-three, not thirty-one —
+Task 9 added two. If it still says 31, `EXPECTED` in `scripts/verify-dist.mjs` was not updated.
+
+- [ ] **Step 5: Re-measure the bundle and correct the README if it moved**
+
+```bash
+gzip -c dist/domma-reactive.min.js | wc -c
+stat -c%s dist/domma-reactive.min.js dist/domma-reactive.esm.js
+```
+
+Components will grow the bundle. Nothing in the build asserts these figures — that is exactly how
+they drifted 20% stale between 0.5.0 and 0.5.2 — so compare against the README's opening line and
+its install table, and correct both if the rounded numbers changed. If they did, amend the release
+commit rather than adding a second one, and run `make preflight` again.
+
+- [ ] **Step 6: Publish, then tag — but ask first**
+
+```bash
+make release-npm    # publishes to npm; irreversible
+make release-gh     # pushes main, creates and pushes the v0.7.0 tag
+```
+
+**Confirm with the author before `release-npm`.** A published version cannot be replaced, only
+deprecated and superseded.
+
+- [ ] **Step 7: Re-pin in the host**
+
+```bash
+cd ../domma && npm install domma-reactive@0.7.0 --save-exact && npm run build:js
+```
+
+Domma pins this package exactly, so a release is not finished until the host picks it up. The
+Makefile's help text says the same.
 
 ## Out of scope
 
