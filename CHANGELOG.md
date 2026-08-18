@@ -8,6 +8,50 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.5.2] - 2026-08-18
+
+Documentation, and one internal fix. No change to the public API.
+
+### Added
+
+- The README now says **what the library is** before it says how to use it. It opened on
+  mechanism — derivations discovering their own reads, keyed reconciliation, the hand-written
+  parser — which only lands for someone who already knows what the library is for. There is now
+  a definition, a `What it does` section of seven capabilities each carrying the line that proves
+  it, and a short `What it isn't`, so a reader can rule themselves out in seconds rather than
+  after 1100 lines. The mechanism paragraphs are not gone; they are re-sited as three of the
+  seven, where there is a frame to hang them on.
+
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` — the agreed design for component
+  params, and the implementation plan that follows from it. Repo only; not packaged.
+
+### Changed
+
+- **`Limits and non-goals` now separates settled differences from real gaps.** The spellings here
+  differ from Knockout's on purpose and will go on differing; a capability Knockout has and this
+  does not is a to-do. `$parents[n]` and components are named as gaps and read **not yet** in the
+  migration table, where `html:` and observable unwrapping stay **none**, since triple-stache and
+  an explicit `.value` already cover them.
+
+  The argument against a component model is kept, but it is now why the problem is hard rather
+  than why it will not be solved. Components are on the roadmap: capability parity with Knockout
+  is the goal, and 1.0 is where that is complete.
+
+### Fixed
+
+- **The bundle size figures, which had drifted about 20% stale.** 0.5.0 grew the bundle and
+  nothing in the build asserts these numbers, so nothing caught it. `min.js` gzipped is 18 KB,
+  not 15 KB; `min.js` and `cjs` are 54 KB, not 44 KB; `esm.js` is 280 KB, not 235 KB.
+
+- **The key sentinel is written as `\0` rather than a literal NUL byte.** The synthetic keys the
+  reconciler mints for unkeyed and duplicate items, and the placeholder values `data-options`
+  gives options with no value, are prefixed with NUL so they cannot collide with anything an
+  author supplies — that part was right. Embedding it as a raw `0x00` was not: it made `file(1)`
+  report `handlers.js` and `reconciler.js` as `data` rather than JavaScript, and grep and ripgrep
+  skip binary files silently. A search for `registerBinding` across `src/` returned every module
+  except the one that defines it. The escape produces the identical string; only the bytes on
+  disk differ.
+
 ## [0.5.1] - 2026-08-09
 
 Documentation only. No change to any bundle beyond its version banner.
