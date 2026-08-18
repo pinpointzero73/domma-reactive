@@ -1038,3 +1038,61 @@ describe('keyed list - destroyed items', () => {
         controller.destroy();
     });
 });
+
+describe('ancestor names through a real nested render', () => {
+    /**
+     * The compiler discovers `each` from mustache syntax; `data-each` is the
+     * applyBindings spelling and is tested there. Same createChildContext, two
+     * routes in, so both are worth pinning.
+     */
+    function nested(body) {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+
+        compile(
+            `{{#each groups key=id}}<div>{{#each members key=id}}${body}{{/each}}</div>{{/each}}`,
+            {
+                title: 'Contacts',
+                groups: [
+                    {id: 1, name: 'Family', members: [{id: 11, name: 'Ada'}]},
+                    {id: 2, name: 'Work', members: [{id: 21, name: 'Grace'}, {id: 22, name: 'Alan'}]}
+                ]
+            },
+            host, undefined, {reactive: true}
+        );
+        flushSync();
+
+        return (selector) => [...host.querySelectorAll(selector)].map((n) => n.textContent);
+    }
+
+    it('reaches ancestor data past the immediate parent', () => {
+        const text = nested(
+            '<b data-bind-text="$parents[0].name"></b>' +
+            '<s data-bind-text="$parents[1].title"></s>' +
+            '<u data-bind-text="$parents.length"></u>'
+        );
+
+        // [0] is the group, which $parent already reached.
+        expect(text('b')).toEqual(['Family', 'Work', 'Work']);
+
+        // [1] is the root, which nothing could reach before.
+        expect(text('s')).toEqual(['Contacts', 'Contacts', 'Contacts']);
+
+        // The group, then the root.
+        expect(text('u')).toEqual(['2', '2', '2']);
+    });
+
+    it('reaches the enclosing position, which no amount of ancestor data can give', () => {
+        const text = nested(
+            '<i data-bind-text="$parentContext.$index"></i>' +
+            '<e data-bind-text="$parentContext.$length"></e>'
+        );
+
+        expect(text('i')).toEqual(['0', '1', '1']);
+        expect(text('e')).toEqual(['2', '2', '2']);
+    });
+
+    it('renders empty past the end rather than throwing', () => {
+        expect(() => nested('<b data-bind-text="$parents[99].name"></b>')).not.toThrow();
+    });
+});

@@ -923,3 +923,35 @@ describe('virtual bindings', () => {
         expect(handle.bindings).toBe(0);
     });
 });
+
+describe('ancestor names on server-rendered markup', () => {
+    /**
+     * One level, because that is what this path supports: a `data-each` nested
+     * inside a keyed `data-each` is not expanded here, which predates these
+     * names and is unrelated to them. The compiled path covers deeper nesting
+     * through `{{#each}}`, in reconciler.test.js.
+     */
+    it('reaches the root through $parents and $parentContext', () => {
+        const host = document.createElement('div');
+        host.innerHTML =
+            '<ul data-each="groups key=id"><li>' +
+            '<b data-bind-text="$parents[0].title"></b>' +
+            '<u data-bind-text="$parents.length"></u>' +
+            '<s data-bind-text="$parentContext.$data.title"></s>' +
+            '</li></ul>';
+        document.body.appendChild(host);
+
+        applyBindings({
+            title: 'Contacts',
+            groups: [{id: 1, name: 'Family'}, {id: 2, name: 'Work'}]
+        }, host);
+        flushSync();
+
+        expect([...host.querySelectorAll('b')].map((n) => n.textContent))
+            .toEqual(['Contacts', 'Contacts']);
+        expect([...host.querySelectorAll('u')].map((n) => n.textContent))
+            .toEqual(['1', '1']);
+        expect([...host.querySelectorAll('s')].map((n) => n.textContent))
+            .toEqual(['Contacts', 'Contacts']);
+    });
+});
