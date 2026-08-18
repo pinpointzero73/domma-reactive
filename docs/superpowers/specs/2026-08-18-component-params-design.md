@@ -55,9 +55,14 @@ existing dispatch in `handlers.js:162–166`. No compiler change: adding a bindi
 `registerBinding()` call, exactly as `template-compiler.js:25` promises.
 
 Both forms may appear together. They merge, and a name given in an attribute wins over the same key
-in the object — the more specific spelling wins. A collision warns once, because it is almost always
-a mistake rather than an intention; this follows `registerBinding`'s existing "replacing a built-in
-is allowed, but loud" rule.
+in the object — the more specific spelling wins. A collision warns once per binding, keyed as
+`warnOnce` already keys its messages, because it is almost always a mistake rather than an
+intention; this follows `registerBinding`'s existing "replacing a built-in is allowed, but loud"
+rule.
+
+`data-param-*` on an element with no `data-component` is inert and warns once. It is otherwise
+indistinguishable from a typo in the component attribute, which would leave the params silently
+doing nothing.
 
 ### Casing
 
@@ -97,6 +102,11 @@ expressions and the difference is the same `.value` the reader already knows.
 
 Each param expression is evaluated once, when the instance is created — a constructor argument, not
 a live binding. Observables stay live because they are references; plain expressions are snapshots.
+The `data-params` object form is evaluated once on the same terms: the expression runs once, and
+the object it yields is read once.
+
+"Once per instance", not once per element: a name change builds a new instance, so every param
+expression is re-evaluated against the context in force at that moment.
 
 The alternative, wrapping every param in a computed, was rejected: it would double-wrap the
 reference case, so `params.contact` would be a computed *of* an observable, and the view model would
