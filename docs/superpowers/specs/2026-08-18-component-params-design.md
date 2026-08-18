@@ -160,6 +160,10 @@ nothing else in the package changes."
 
 It is `null` outside a component, so the rule that every context name resolves everywhere holds.
 
+`createComponentContext` must also set `$parentContext` to the enclosing context, exactly as
+`createChildContext` does, so `$parents` walks correctly across a component boundary. Both names
+shipped in 0.6.0; see `2026-08-18-parents-and-parent-context-design.md`.
+
 ### Failure is never fatal
 
 Consistent with every other binding: one warning, naming the expression and the template, and that

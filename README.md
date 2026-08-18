@@ -734,17 +734,19 @@ open-ended. Every handler is otherwise the same shape and dispatched by the same
 
 Expressions resolve against a context, not a bare data object:
 
-| Name      | Meaning                                              |
-|-----------|------------------------------------------------------|
-| `$data`   | the object names resolve against                     |
-| `$root`   | the top-level data, however deep the nesting         |
-| `$parent` | the enclosing **data** (not the enclosing context)    |
-| `$index`  | position within a list                               |
-| `$length` | size of the enclosing list                            |
+| Name             | Meaning                                                    |
+|------------------|------------------------------------------------------------|
+| `$data`          | the object names resolve against                           |
+| `$root`          | the top-level data, however deep the nesting               |
+| `$parent`        | the enclosing **data** (not the enclosing context)          |
+| `$parents`       | **all** ancestor data, nearest first — `$parents[0]` is `$parent` |
+| `$parentContext` | the enclosing **context** — the one name here that is one  |
+| `$index`         | position within a list                                     |
+| `$length`        | size of the enclosing list                                 |
 
-All five resolve everywhere. Outside a list or `with` block, `$data` and `$root` are the top-level data, and `$parent`,
-`$index` and `$length` are `null` — so a binding never has to ask where it is. Pass plain data anywhere a context is
-accepted and it is promoted for you.
+All seven resolve everywhere. Outside a list or `with` block, `$data` and `$root` are the top-level data, `$parents` is
+empty, and `$parent`, `$parentContext`, `$index` and `$length` are `null` — so a binding never has to ask where it is.
+Pass plain data anywhere a context is accepted and it is promoted for you.
 
 ```javascript
 import {createRootContext, createChildContext} from 'domma-reactive';
@@ -759,6 +761,34 @@ child.$index;          // 0
 There is no scope-chain walk: a bare name resolves against `$data` only. Reach a level up with `$parent.name`, which
 says what it means.
 
+#### Reaching further than one level
+
+`$parents` is ancestor data, nearest first, so `$parents[1]` is a grandparent. `$parentContext` is the enclosing
+*context*, which is how you reach a thing that is not data at all — the enclosing list's position:
+
+```html
+<ul>{{#each groups key=id}}
+    <li>
+        <h3>{{name}}</h3>
+
+        <ol>{{#each members key=id}}
+            <li>
+                {{name}}
+                — in {{$parents[0].name}}          <!-- the group: same as $parent.name -->
+                — of {{$parents[1].title}}         <!-- the root: nothing else reaches it -->
+                — group {{$parentContext.$index}}  <!-- the OUTER list's position -->
+            </li>
+        {{/each}}</ol>
+    </li>
+{{/each}}</ul>
+```
+
+`$parents` is built only if a template asks for it, by walking `$parentContext` on first read, so a list that never
+mentions the name pays nothing for it.
+
+Both are frozen, as every context is. Writing to `$parents[0]` or to a context reached through `$parentContext` logs one
+warning and does nothing — write to ancestor *data* instead, which `$parents[1].name = x` does.
+
 ### Known limits
 
 Bindings inside an **unkeyed** `{{#each}}`, and inside `{{#with}}`, are not bound independently — the block re-renders as
@@ -768,8 +798,9 @@ them works; see [Keyed lists](#keyed-lists).
 `{{> partial}}` inside a keyed block is not expanded. The block body is compiled once into a `<template>`, before any
 render pass exists to resolve a partial against. Inline it, and the compiler says so if you do not.
 
-There is no `$parents[2]` yet: `$parent` reaches one level up, and no further — see
-[Limits and non-goals](#limits-and-non-goals).
+A `data-each` nested inside another `data-each` is not expanded by `applyBindings` — the inner attribute is left as
+written and the bindings inside it resolve against the *outer* item. Nest with `{{#each}}` through `compile()` instead,
+which does reconcile at any depth.
 
 ## Keyed lists
 
@@ -1041,7 +1072,7 @@ expressionDependencies('$parent.name');       // Set {} — position, not state
 | Ternary       | `a ? b : c`                                      |
 | Unary         | `- + !`                                          |
 | Calls         | `helper(arg, …)` — **registered helpers only**   |
-| Context       | `$data`, `$root`, `$parent`, `$index`, `$length` |
+| Context       | `$data`, `$root`, `$parent`, `$parents`, `$parentContext`, `$index`, `$length` |
 
 Precedence and associativity are JavaScript's. `1 + 2 * 3` is 7; `10 - 3 - 2` is 5. Nesting is capped at 64 levels.
 
@@ -1173,8 +1204,9 @@ deliberate rather than incidental.
 | `ko.applyBindings(vm, el)` | `applyBindings(vm, el)` |
 | `ko.cleanNode(el)` | `handle.dispose()` |
 | `$data` `$root` `$parent` `$index` | identical |
+| `$parents[2]` | identical |
+| `$parentContext` | identical |
 | `html: markup` | **none** — `{{{triple-stache}}}`, which says so where you can see it |
-| `$parents[2]` | **not yet** — `$parent` reaches one level; see [Limits](#limits-and-non-goals) |
 | `component:` / `ko.components` | **not yet** — see [Limits](#limits-and-non-goals) |
 
 The three differences worth knowing before you start:
@@ -1200,6 +1232,8 @@ Every one of these was hit while building the example app above.
 | A binding is silently skipped | Its expression did not parse; look for the warning | The warning names the source and the template |
 | Effects keep running after the DOM is gone | Nothing disposed them | `handle.dispose()` / `controller.destroy()` |
 | Mutating an object and reassigning it does nothing | The change gate compares old and new — the same reference | Produce a new value |
+| `data-model="$parents[0]"` warns and does nothing | `$parents` and every context are frozen | Bind ancestor *data*: `$parents[1].name` |
+| A nested `data-each` renders its template unexpanded | `applyBindings` does not expand a `data-each` inside a `data-each` | Nest with `{{#each}}` through `compile()` |
 
 Nothing in the binding layer throws on bad input. Every failure above logs exactly one warning, naming the expression
 and the template, and skips that binding alone — one broken binding does not take the rest of the page down with it.
@@ -1213,11 +1247,9 @@ Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `
 unwrapping, no `eval`-backed expressions, no object literals in a binding, and no minimal-move list reconciliation yet.
 None of these is waiting on anything. The spellings here differ from Knockout's on purpose and will go on differing.
 
-**Two things are gaps rather than choices**, and the difference matters: a spelling that differs is settled, but a
-capability Knockout has and this does not is a to-do.
-
-**`$parents[n]`.** `$parent` reaches one level up and no further, so a binding nested three collections deep cannot see
-past its immediate owner. Knockout's `$parents` array can. This one is small.
+**One thing is a gap rather than a choice**, and the difference matters: a spelling that differs is settled, but a
+capability Knockout has and this does not is a to-do. `$parents[n]` was the other, and shipped in 0.6.0 along with
+`$parentContext`.
 
 **Components.** The one substantial thing Knockout has and this does not **yet** — `ko.components.register`, the
 `component:` binding, `$component`, `$componentTemplateNodes`. It is open rather than settled. What makes it hard is not
