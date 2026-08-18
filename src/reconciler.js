@@ -331,7 +331,7 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
                 'position for that item, which reconciles no better than an unkeyed ' +
                 'block. Give every item a stable identifier.'
             );
-            key = ` position:${index}`;
+            key = `\0position:${index}`;
         } else if (next.has(key)) {
             warnOnce(
                 `key:duplicate:${label}:${keyPath}`,
@@ -339,7 +339,7 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
                 'a key must identify exactly one item. The duplicate is being kept ' +
                 'apart by position, so it will not reconcile across changes.'
             );
-            key = ` duplicate:${index}:${String(key)}`;
+            key = `\0duplicate:${index}:${String(key)}`;
         }
 
         let instance = previous.get(key);

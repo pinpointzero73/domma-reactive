@@ -770,7 +770,7 @@ function buildOptions(binding, el, items, context) {
             // Opaque on purpose: two items that stringify alike must not become
             // the same option. The NUL prefix is the same trick the reconciler
             // uses for a synthesised key — no author-supplied string can collide.
-            option.value = ` opt:${index}`;
+            option.value = `\0opt:${index}`;
             option[OPTION_VALUE] = value;
         } else if (typeof value !== 'string') {
             option.value = str(value);
