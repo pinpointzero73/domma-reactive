@@ -8,6 +8,72 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.6.0] - 2026-08-18
+
+Two new binding-context names, closing the ancestor gap against Knockout. The only capability
+Knockout still has and this does not is components, which are next.
+
+### Added
+
+- **`$parents`** — ancestor data, nearest first, so `$parents[1]` is a grandparent.
+  `$parents[0]` is `$parent` everywhere below the root; at the root `$parent` is `null` and
+  `$parents` is empty.
+
+  It is built only if a template asks for it, by walking the parent chain on first read and
+  caching the result. A keyed list creates a context per item per render whether or not any
+  template mentions the name, so a list that never uses it pays nothing.
+
+- **`$parentContext`** — the enclosing context, and the one context name that *is* a context.
+  Ancestor data cannot answer "which row of the **outer** list am I in?", because position lives
+  on the context rather than on the data. `$parentContext.$index` answers it, and nothing could
+  before:
+
+  ```html
+  <ol>{{#each members key=id}}
+      <li>
+          {{name}}
+          — in {{$parents[0].name}}          <!-- the group -->
+          — of {{$parents[1].title}}         <!-- the root -->
+          — group {{$parentContext.$index}}  <!-- the OUTER list's position -->
+      </li>
+  {{/each}}</ol>
+  ```
+
+  `$parent` remains **data**, not a context. Making it one would force `$parent.$data.name`
+  everywhere, which is why it is data in the first place. Knockout draws the line in the same
+  place and added `$parentContext` for the same reason.
+
+### Fixed
+
+- **Writing to a frozen target warns instead of throwing.** `resolveWriteTarget` hands back an
+  object and a key, and its callers assigned to it unguarded — so a frozen target threw a
+  `TypeError`, and a binding that throws takes the page down with it, which is the one thing this
+  layer promises never to do.
+
+  It was reachable before this release: `data-model` against a frozen view model has always landed
+  there. `$parents` and `$parentContext` are frozen too, which made it easy to reach rather than
+  obscure. Both now warn and skip, like every other unsettable path.
+
+- **An inert `data-each` now says so.** `data-each` is an `applyBindings` spelling; the compiler
+  discovers lists from `{{#each}}` only. A list's item template *is* compiled markup, so a
+  `data-each` nested inside another list was left exactly as written — its item template rendered
+  once as ordinary markup, and the bindings inside it resolved against the **outer** item. It
+  looked close enough to working to survive review.
+
+  The capability was never absent: `{{#each}}` nests to any depth and works inside a `data-each`
+  body, both new context names included. What was absent was any sign the attribute had done
+  nothing. `annotate()` now warns once, quoting the expression back and naming the form to write:
+
+  ```html
+  <ul data-each="groups key=id">
+      <li>
+          {{#each members key=id}}<b>{{name}} — {{$parentContext.$index}}</b>{{/each}}
+      </li>
+  </ul>
+  ```
+
+  Found while testing this release, and verified to predate it.
+
 ## [0.5.2] - 2026-08-18
 
 Documentation, and one internal fix. No change to the public API.

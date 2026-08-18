@@ -87,7 +87,7 @@ Or as a plain script — the UMD bundle exposes the global `DommaReactive`:
 |------|--------|------|
 | `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 54 KB, **18 KB gzipped** |
 | `dist/domma-reactive.cjs` | UMD — `require()` | 54 KB |
-| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 283 KB (comments intact; your bundler minifies) |
+| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 284 KB (comments intact; your bundler minifies) |
 
 The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
 Node or a worker. Only the compiler functions touch `document`, and only when called.
