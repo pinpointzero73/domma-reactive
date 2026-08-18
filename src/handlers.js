@@ -192,6 +192,19 @@ const str = (value) => (value === null || value === undefined ? '' : String(valu
  * prototype pollution with the arrow pointing the other way and the read guard
  * would never see it.
  *
+ * ── Frozen targets are not settable paths ────────────────────────────────────
+ *
+ * These are strict-mode modules, so `object[key] = value` against a frozen
+ * object throws a TypeError — and a binding that throws takes the page down with
+ * it, which is the one thing this layer promises never to do. A frozen target is
+ * refused here instead, so every caller warns and skips through the path it
+ * already has for an unsettable expression.
+ *
+ * That covers `$parents` and every context reached through `$parentContext`,
+ * both frozen on purpose. It also covers a frozen view model, which could always
+ * reach this line and would always have thrown — reachable long before either of
+ * those names existed, and waiting for the first person to freeze their data.
+ *
  * @param {Object|null} ast
  * @param {Object} context
  * @returns {{object: Object, key: string}|null}
@@ -203,12 +216,14 @@ export function resolveWriteTarget(ast, context) {
         if (CONTEXT_KEYS.has(ast.name)) return null;
         const object = context.$data;
         if (object === null || typeof object !== 'object') return null;
+        if (Object.isFrozen(object)) return null;
         return BLOCKED_KEYS.has(ast.name) ? null : {object, key: ast.name};
     }
 
     if (ast.type === 'Member') {
         const object = evaluateAst(ast.object, context);
         if (object === null || typeof object !== 'object') return null;
+        if (Object.isFrozen(object)) return null;
         const key = str(ast.computed ? evaluateAst(ast.property, context) : ast.property);
         return BLOCKED_KEYS.has(key) ? null : {object, key};
     }

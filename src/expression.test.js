@@ -37,6 +37,7 @@ import {
     registerHelper,
     unregisterHelper
 } from './expression.js';
+import {createChildContext, createRootContext} from './context.js';
 
 const evaluate = (source, context) => evaluateExpression(source, context);
 
@@ -1216,5 +1217,42 @@ describe('the evaluator still will not perform a method call', () => {
     it('reports the method call as a dependency of its receiver', () => {
         const ast = parseExpression('list.remove(item)', {methodCalls: true});
         expect([...expressionDependencies(ast)].sort()).toEqual(['item', 'list']);
+    });
+});
+
+describe('ancestor context names', () => {
+    const root = createRootContext({n: 'root', title: 'T'});
+    const one = createChildContext(root, {n: 'one'});
+    const two = createChildContext(one, {n: 'two'}, 3, 9);
+
+    it('reads $parents by index', () => {
+        expect(evaluateExpression('$parents[0].n', two)).toBe('one');
+        expect(evaluateExpression('$parents[1].n', two)).toBe('root');
+    });
+
+    it('reads $parents.length', () => {
+        expect(evaluateExpression('$parents.length', two)).toBe(2);
+    });
+
+    it('reads through $parentContext', () => {
+        expect(evaluateExpression('$parentContext.$data.n', two)).toBe('one');
+        expect(evaluateExpression('$parentContext.$parent.n', two)).toBe('root');
+    });
+
+    it('reaches the enclosing position, which is the point of $parentContext', () => {
+        const inner = createChildContext(two, {n: 'inner'}, 0, 1);
+
+        expect(evaluateExpression('$parentContext.$index', inner)).toBe(3);
+        expect(evaluateExpression('$parentContext.$length', inner)).toBe(9);
+    });
+
+    it('yields undefined past the end rather than throwing', () => {
+        expect(evaluateExpression('$parents[99]', two)).toBeUndefined();
+        expect(() => evaluateExpression('$parents[99].n', two)).not.toThrow();
+    });
+
+    it('does not count either name as a data dependency', () => {
+        expect([...expressionDependencies('$parents[1].n')]).toEqual([]);
+        expect([...expressionDependencies('$parentContext.$index')]).toEqual([]);
     });
 });

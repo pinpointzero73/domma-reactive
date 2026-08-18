@@ -21,7 +21,7 @@ import {
     resolveWriteTarget,
     unregisterBinding
 } from './handlers.js';
-import {createRootContext} from './context.js';
+import {createChildContext, createRootContext} from './context.js';
 import {parseExpression, clearExpressionCache} from './expression.js';
 import {observable} from './observable.js';
 
@@ -1568,5 +1568,35 @@ describe('data-focus', () => {
         input.focus();
 
         expect(data.editing).toBe(false);
+    });
+});
+
+describe('resolveWriteTarget refuses a frozen target', () => {
+    it('refuses to write into $parents', () => {
+        const child = createChildContext(createRootContext({}), {name: 'ada'});
+        expect(resolveWriteTarget(parseExpression('$parents[0]'), child)).toBeNull();
+    });
+
+    it('refuses to write into a context reached through $parentContext', () => {
+        const child = createChildContext(createRootContext({}), {name: 'ada'});
+        expect(resolveWriteTarget(parseExpression('$parentContext.$index'), child)).toBeNull();
+    });
+
+    it('still allows writing to ancestor data', () => {
+        const child = createChildContext(createRootContext({title: 'T'}), {name: 'ada'});
+        const target = resolveWriteTarget(parseExpression('$parent.title'), child);
+
+        expect(target).not.toBeNull();
+        expect(target.key).toBe('title');
+    });
+
+    it('refuses frozen view-model data rather than throwing', () => {
+        const frozen = createRootContext(Object.freeze({x: 1}));
+        expect(resolveWriteTarget(parseExpression('x'), frozen)).toBeNull();
+    });
+
+    it('refuses a frozen object reached through a member chain', () => {
+        const ctx = createRootContext({inner: Object.freeze({x: 1})});
+        expect(resolveWriteTarget(parseExpression('inner.x'), ctx)).toBeNull();
     });
 });
