@@ -114,3 +114,117 @@ export function unregisterComponent(name) {
 export function componentDefinition(name) {
     return registry.get(name);
 }
+
+const PARAM_PREFIX = 'data-param-';
+
+/**
+ * `first-name` → `firstName`.
+ *
+ * Kebab in the attribute because an HTML attribute name is lowercased by the
+ * parser, so `data-param-firstName` would arrive as `firstname`. This is
+ * `cssProperty()` in handlers.js run in the opposite direction, and the
+ * reasoning is the one written down there.
+ *
+ * @param {string} suffix the part after `data-param-`
+ * @returns {string}
+ */
+export function paramName(suffix) {
+    return suffix.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+/**
+ * The params object for one component instance.
+ *
+ * ── Two spellings, for the reason data-bind-style has two ────────────────────
+ *
+ *   data-param-contact="$data"   one param, named in the attribute
+ *   data-params="cardParams"     an object the view model already holds
+ *
+ * The first is the common case and the one Knockout makes awkward, because
+ * `params: {value: x}` means inventing an object literal — and object literals
+ * are exactly what this expression language refuses, which is what lets bindings
+ * parse without `eval`. The second is for many params at once. They merge, and
+ * the attribute wins, because it is the more specific of the two.
+ *
+ * ── Evaluated once, at instantiation ─────────────────────────────────────────
+ *
+ * A param is a constructor argument, not a live binding. What makes that
+ * sufficient is that observables are references:
+ *
+ *   data-param-x="thing"         passes the observable — the parent sees writes
+ *   data-param-x="thing.value"   passes a snapshot — it does not
+ *
+ * No code decides this and no convention has to be remembered: the two are
+ * different expressions, and the difference is the same `.value` the author
+ * already reads through. Knockout needs a documented rule here and its users
+ * still get it wrong, because `params: {a: x}` and `params: {a: x()}` look
+ * equally plausible at a glance.
+ *
+ * Wrapping every param in a computed was the alternative, and it was rejected
+ * because it double-wraps the reference case: `params.contact` would be a
+ * computed OF an observable, and the view model would have to read `.value` on
+ * some params and not others with no way to tell which from its own code.
+ *
+ * Frozen, because it is an input rather than scratch space — the same reasoning
+ * that freezes a binding context. Observables inside it stay writable through
+ * `.value`, which is the intended path back to the parent.
+ *
+ * @param {Element} element
+ * @param {Object} binding
+ * @param {Object} context
+ * @returns {Object} frozen
+ */
+export function collectParams(element, binding, context) {
+    const params = {};
+
+    // Read before the loop, so a named attribute can be seen to override a key
+    // the object supplied. The other order would make the collision invisible.
+    const bag = element.getAttribute('data-params');
+    if (bag !== null && bag.trim() !== '') {
+        const evaluate = compileExpression(bag);
+        const value = evaluate === null ? null : evaluate(context);
+
+        if (evaluate === null) {
+            warnOnce(
+                `component:params:${binding.id}`,
+                `data-params="${bag}" did not parse, in ${binding.expr}`
+            );
+        } else if (value === null || typeof value !== 'object') {
+            warnOnce(
+                `component:params:${binding.id}`,
+                `data-params="${bag}" needs an object of params — got ` +
+                `${value === null ? 'null' : typeof value}, in ${binding.expr}`
+            );
+        } else {
+            Object.assign(params, value);
+        }
+    }
+
+    for (const attribute of [...element.attributes]) {
+        if (!attribute.name.startsWith(PARAM_PREFIX)) continue;
+
+        const key = paramName(attribute.name.slice(PARAM_PREFIX.length));
+        if (key === '') continue;
+
+        const evaluate = compileExpression(attribute.value);
+        if (evaluate === null) {
+            warnOnce(
+                `component:param:${binding.id}:${key}`,
+                `${attribute.name}="${attribute.value}" did not parse, in ${binding.expr}`
+            );
+            continue;
+        }
+
+        if (key in params) {
+            warnOnce(
+                `component:collide:${binding.id}:${key}`,
+                `"${key}" is given by both data-params and ${attribute.name}, in ` +
+                `${binding.expr}. The attribute wins, but one of the two is redundant.`
+            );
+        }
+
+        params[key] = evaluate(context);
+    }
+
+    return Object.freeze(params);
+}

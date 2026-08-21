@@ -10,6 +10,9 @@
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
+import {createRootContext} from './context.js';
+import {observable} from './observable.js';
+import {parseFragment} from './nodes.js';
 import {
     collectParams,
     componentDefinition,
@@ -66,5 +69,99 @@ describe('unregisterComponent', () => {
         expect(unregisterComponent('probe')).toBe(true);
         expect(unregisterComponent('probe')).toBe(false);
         expect(componentDefinition('probe')).toBeUndefined();
+    });
+});
+
+/** One element from a markup string. */
+function el(html) {
+    return parseFragment(html).firstElementChild;
+}
+
+describe('paramName', () => {
+    it('leaves a single word alone', () => {
+        expect(paramName('contact')).toBe('contact');
+    });
+
+    it('camelCases a kebab name', () => {
+        expect(paramName('first-name')).toBe('firstName');
+        expect(paramName('a-b-c')).toBe('aBC');
+    });
+});
+
+describe('collectParams', () => {
+    const binding = {id: 'b1', expr: "'probe'"};
+
+    it('reads a named param', () => {
+        const node = el(`<div data-component="'probe'" data-param-label="title"></div>`);
+        const params = collectParams(node, binding, createRootContext({title: 'Ada'}));
+        expect(params).toEqual({label: 'Ada'});
+    });
+
+    it('camelCases the attribute suffix', () => {
+        const node = el(`<div data-param-first-name="who"></div>`);
+        expect(collectParams(node, binding, createRootContext({who: 'Ada'}))).toEqual({firstName: 'Ada'});
+    });
+
+    it('passes an observable by reference', () => {
+        const name = observable('Ada');
+        const node = el(`<div data-param-name="who"></div>`);
+        const params = collectParams(node, binding, createRootContext({who: name}));
+
+        expect(params.name).toBe(name);
+        params.name.value = 'Grace';
+        expect(name.value).toBe('Grace');
+    });
+
+    it('passes a snapshot when the expression reads .value', () => {
+        const name = observable('Ada');
+        const node = el(`<div data-param-name="who.value"></div>`);
+        const params = collectParams(node, binding, createRootContext({who: name}));
+
+        expect(params.name).toBe('Ada');
+        name.value = 'Grace';
+        expect(params.name).toBe('Ada');
+    });
+
+    it('reads the object form', () => {
+        const node = el(`<div data-params="bag"></div>`);
+        const params = collectParams(node, binding, createRootContext({bag: {a: 1, b: 2}}));
+        expect(params).toEqual({a: 1, b: 2});
+    });
+
+    it('merges both, with the named attribute winning', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const node = el(`<div data-params="bag" data-param-a="override"></div>`);
+        const params = collectParams(node, binding, createRootContext({bag: {a: 1, b: 2}, override: 9}));
+
+        expect(params).toEqual({a: 9, b: 2});
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('a');
+    });
+
+    it('is frozen', () => {
+        const node = el(`<div data-param-a="x"></div>`);
+        const params = collectParams(node, binding, createRootContext({x: 1}));
+        expect(Object.isFrozen(params)).toBe(true);
+    });
+
+    it('warns once and omits the param when its expression will not parse', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const node = el(`<div data-param-a="((("></div>`);
+        const params = collectParams(node, binding, createRootContext({}));
+
+        expect('a' in params).toBe(false);
+        expect(warn).toHaveBeenCalled();
+    });
+
+    it('warns when data-params is not an object', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const node = el(`<div data-params="nope"></div>`);
+        expect(collectParams(node, binding, createRootContext({nope: 5}))).toEqual({});
+        expect(warn).toHaveBeenCalled();
+    });
+
+    it('is empty when there are no params at all', () => {
+        const node = el(`<div data-component="'probe'"></div>`);
+        expect(collectParams(node, binding, createRootContext({}))).toEqual({});
     });
 });
