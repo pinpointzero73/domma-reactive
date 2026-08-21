@@ -2,6 +2,16 @@
   "name": "domma-reactive",
   "version": "1.0.0",
   "description": "Dependency-tracked reactivity and fine-grained DOM bindings. The reactive core of Domma, usable standalone.",
+  "author": "Darryl Waterhouse",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pinpointzero73/domma-reactive.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pinpointzero73/domma-reactive/issues"
+  },
+  "homepage": "https://github.com/pinpointzero73/domma-reactive#readme",
   "type": "module",
   "main": "./dist/domma-reactive.cjs",
   "module": "./dist/domma-reactive.esm.js",
@@ -14,7 +24,12 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist/", "README.md", "Tutorial.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "README.md",
+    "Tutorial.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "rollup -c",
     "test": "vitest",
@@ -22,8 +37,15 @@
     "test:dist": "npm run build && node scripts/verify-dist.mjs",
     "prepublishOnly": "npm run test:run && npm run test:dist"
   },
-  "keywords": ["reactive", "observable", "computed", "dependency-tracking", "template", "bindings", "domma"],
-  "license": "MIT",
+  "keywords": [
+    "reactive",
+    "observable",
+    "computed",
+    "dependency-tracking",
+    "template",
+    "bindings",
+    "domma"
+  ],
   "devDependencies": {
     "vitest": "^4.0.16",
     "jsdom": "^24.1.3",
