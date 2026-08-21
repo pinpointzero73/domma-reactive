@@ -13,6 +13,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {createRootContext} from './context.js';
 import {observable, observableArray} from './observable.js';
 import {parseFragment} from './nodes.js';
+import {applyBindings} from './apply-bindings.js';
 import {compile} from './template-compiler.js';
 import {flushSync, liveComputations} from './graph.js';
 import {liveDisposers} from './lifecycle.js';
@@ -439,5 +440,68 @@ describe('failure is never fatal', () => {
         registerComponent('probe', {template: '<b data-bind-text="a"></b>'});
         mount(`<div data-component="'probe'" data-param-a="x"></div>`, {x: 1});
         expect(warn).not.toHaveBeenCalled();
+    });
+});
+
+describe('through applyBindings', () => {
+    /** Activate a component in DOM that already exists, as a server-rendered page has. */
+    function activate(markup, data) {
+        const host = parseFragment(`<div>${markup}</div>`).firstElementChild;
+        document.body.appendChild(host);
+        return {host, handle: applyBindings(data, host)};
+    }
+
+    it('renders a component in already-rendered DOM', () => {
+        registerComponent('probe', {template: '<b data-bind-text="label"></b>'});
+
+        const {host, handle} = activate(
+            `<div data-component="'probe'" data-param-label="who"></div>`,
+            {who: 'Ada'}
+        );
+
+        expect(host.querySelector('b').textContent).toBe('Ada');
+        handle.dispose();
+    });
+
+    it('disposes the view model when the handle is disposed', () => {
+        const disposed = vi.fn();
+        registerComponent('probe', {template: '<b></b>', create: () => ({dispose: disposed})});
+
+        const {handle} = activate(`<div data-component="'probe'"></div>`, {});
+        handle.dispose();
+
+        expect(disposed).toHaveBeenCalledOnce();
+    });
+
+    it('swaps on a dynamic name here too', () => {
+        registerComponent('probe', {template: '<b>A</b>'});
+        registerComponent('probe-b', {template: '<i>B</i>'});
+
+        const which = observable('probe');
+        const {host, handle} = activate(`<div data-component="which.value"></div>`, {which});
+        expect(host.querySelector('b')).not.toBeNull();
+
+        which.value = 'probe-b';
+        flushSync();
+
+        expect(host.querySelector('i').textContent).toBe('B');
+
+        handle.dispose();
+        unregisterComponent('probe-b');
+    });
+
+    it('works inside a data-each row, which is the applyBindings list spelling', () => {
+        registerComponent('probe', {template: '<b data-bind-text="id"></b>'});
+
+        const rows = observableArray([{id: 1}, {id: 2}]);
+        const {host, handle} = activate(
+            `<ul data-each="rows key=id"><li><div data-component="'probe'" data-params="$data"></div></li></ul>`,
+            {rows}
+        );
+        flushSync();
+
+        expect([...host.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['1', '2']);
+
+        handle.dispose();
     });
 });

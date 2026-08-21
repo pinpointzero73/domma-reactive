@@ -376,7 +376,15 @@ export function applyBindings(data, rootElement, options = {}) {
 
         if (typeof handler.attach === 'function') {
             handler.attach({binding, node: el, controller});
-            teardowns.push(() => handler.detach?.({binding, node: el, controller}));
+        }
+
+        // Registered independently of `attach`, as runtime.js does it. The
+        // contract lists the two as separate hooks, and a handler that owns
+        // something to tear down without needing a per-node attach — a
+        // component does exactly that — would otherwise leak it here while
+        // disposing correctly under compile().
+        if (typeof handler.detach === 'function') {
+            teardowns.push(() => handler.detach({binding, node: el, controller}));
         }
 
         // A region handler owns a stretch of DOM and re-renders it from source

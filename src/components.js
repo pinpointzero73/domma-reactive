@@ -394,6 +394,23 @@ export function createComponentHandler(factoryFor) {
             }
 
             return true;
+        },
+
+        /**
+         * Tear down when the controller is destroyed.
+         *
+         * `registerDisposer` above covers the other way a component ends: an
+         * ancestor removing the subtree, which runs node-scoped disposers
+         * without anything being "destroyed". Neither path covers the other —
+         * `applyBindings`' dispose() runs detach hooks and its own teardowns but
+         * does not walk node disposers, so a component activated in place would
+         * leak its view model without this.
+         *
+         * `teardown` is idempotent, so the two overlapping is harmless.
+         */
+        detach({node}) {
+            const state = states.get(node);
+            if (state !== undefined) teardown(state);
         }
     };
 }

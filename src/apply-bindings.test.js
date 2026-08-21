@@ -998,3 +998,44 @@ describe('a nested data-each says so instead of failing quietly', () => {
             .toEqual(['Contacts/0', 'Contacts/1', 'Contacts/1']);
     });
 });
+
+describe('detach is wired independently of attach', () => {
+    afterEach(() => unregisterBinding('probe'));
+
+    it('calls detach on dispose for a handler that has no attach', () => {
+        const detached = vi.fn();
+        registerBinding('probe', {
+            attribute: 'data-probe',
+            expression: true,
+            update: () => true,
+            detach: detached
+        });
+
+        const host = document.createElement('div');
+        host.innerHTML = '<span data-probe="x"></span>';
+        const handle = applyBindings({x: 1}, host);
+        handle.dispose();
+
+        expect(detached).toHaveBeenCalledOnce();
+    });
+
+    it('still calls both when the handler has each', () => {
+        const attached = vi.fn();
+        const detached = vi.fn();
+        registerBinding('probe', {
+            attribute: 'data-probe',
+            expression: true,
+            update: () => true,
+            attach: attached,
+            detach: detached
+        });
+
+        const host = document.createElement('div');
+        host.innerHTML = '<span data-probe="x"></span>';
+        const handle = applyBindings({x: 1}, host);
+
+        expect(attached).toHaveBeenCalledOnce();
+        handle.dispose();
+        expect(detached).toHaveBeenCalledOnce();
+    });
+});
