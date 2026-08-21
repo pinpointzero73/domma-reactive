@@ -8,7 +8,102 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.7.0] - 2026-08-21
+
+Components - the last substantial capability Knockout had and this did not, apart from slots. A
+component is a template plus an optional factory for the view model it renders against: reusable
+markup that owns some state and knows how to clean it up.
+
+The implementation is small because a component instance is not a new kind of thing. It is a
+reconciler instance, exactly as a keyed list item is - cloned template, its own binding records, its
+own effects, an anchored range, and disposal that works when an ancestor removes the subtree without
+knowing a component was there. All of that already existed for lists, which is why the whole feature
+costs about 1.2 KB gzipped.
+
+### Added
+
+- **`registerComponent(name, {template, create?})`** and **`unregisterComponent(name)`**. `create`
+  is a plain factory - no `new`, no constructor form, no second `createViewModel` spelling. It
+  receives `(params, {element})` and returns the view model. Leave it out and the component is
+  template-only, with the params themselves as `$data`, which keeps the trivial case trivial.
+  Registration **throws** on a bad definition, as `registerExtender` does: a bad registration is a
+  programming error at startup, where a bad expression is authored data met halfway through a paint.
+
+- **`data-component`**, a twelfth binding kind. It renders inside its element rather than replacing
+  it, as Knockout's `component:` does, so the host keeps its own attributes, classes and identity.
+  It is an element binding rather than a region one, because a region is anchored around the whole
+  element and would bury the `data-param-*` attributes the binding needs to read.
+
+- **Params in two spellings.** `data-param-<name>="expr"` for one param named in the attribute, and
+  `data-params="obj"` for an object the view model already holds. Both may appear together; they
+  merge, and a named attribute beats the same key in the object, with a warning. This is the pair
+  `data-bind-style` established and `data-options-*` followed, and it exists for the same reason:
+  Knockout spells params as an object literal, and object literals are exactly what this expression
+  language refuses - which is what lets bindings parse without `eval`.
+
+  Names are kebab-case in the attribute and camelCase in the object, because an HTML attribute name
+  is lowercased by the parser and `data-param-firstName` could not survive the round trip.
+
+- **Params pass by reference, and the markup says which.** `data-param-x="thing"` passes the
+  observable, so the component can write back and the parent sees it; `data-param-x="thing.value"`
+  passes a snapshot. Nothing decides this - they are different expressions, and the difference is
+  the same `.value` the author already reads through. Params are evaluated once, at instantiation,
+  and the object is frozen.
+
+- **`$component`**, the eighth binding-context name. It is the enclosing component's view model, and
+  it is **inherited** by child contexts exactly as `$root` is, so it still answers inside a
+  `{{#each}}` in a component's template - which is the only reason the name exists, since `$data`
+  already reaches the view model at the top level. `null` outside a component.
+
+  `createComponentContext` sets `$parentContext`, so `$parents` walks straight out of a component
+  and on up the page: a component is a boundary for `$data` and nothing else.
+
+- **Dynamic components.** The name is an expression, like every other binding value, so
+  `data-component="currentView.value"` swaps the rendered component when the observable changes -
+  which is how a great many Knockout applications route. A literal name therefore takes inner
+  quotes. Changing the name disposes the old instance (view model `dispose()`, then its effects,
+  then its nodes) and re-evaluates every param against the context in force at that moment. Setting
+  the name to what it already is does nothing, so an unrelated update never costs a half-typed
+  input.
+
+- **View-model `dispose()`**, run on teardown before the instance's effects are destroyed. It is the
+  only lifecycle hook, and the same contract `handle.dispose()` and `controller.destroy()` already
+  offer; more would be inventing the framework this package is not.
+
+### Fixed
+
+- `applyBindings` registered a handler's `detach` teardown only when that handler also had an
+  `attach`, so a handler owning something to tear down without needing a per-node attach never heard
+  about disposal. `runtime.js` has always called the two independently and the documented contract
+  lists them as separate hooks - this path was the odd one out. Found by components: one activated
+  through `applyBindings` disposed correctly under `compile()` and leaked its view model here.
+
+- `data-param-*` on an element with no `data-component` now warns at compile time. Nothing
+  downstream would ever look at that element, and the symptom - a component whose every param is
+  `undefined` - is indistinguishable from a typo in the component name.
+
+### Changed
+
+- `createInstance` takes an optional `{context}`, so a caller can supply the context an instance
+  resolves against. Lists are untouched.
+- One factory builder is now shared between `{{#each}}` block bodies and component templates. The
+  two differ only in their source, their label and their id prefix.
+- The bundle grew to 20 KB gzipped (from 18), 58 KB minified (from 54).
+
+### Still missing
+
+- **Slots** - Knockout's `$componentTemplateNodes`, and transclusion generally. A component's host
+  element has its children replaced on mount. The obstacle is structural: a template is compiled
+  once into a `<template>` before any render pass exists, which is what makes an instance cheap to
+  clone, and slots need the host's children compiled into a body only known at mount time. It is the
+  same wall `{{> partial}}` meets inside a keyed block, and it is the one remaining item on the
+  parity list.
+- Async or AMD template loading. Templates are strings.
+
 ## [0.6.1] - 2026-08-21
+
+Never published to npm on its own - the sweep below shipped inside 0.7.0. The entry stays because
+the version existed in the repository and the change is worth recording where it happened.
 
 ### Changed
 - Em and en dashes replaced with plain hyphens throughout: source comments,
@@ -289,6 +384,9 @@ before only by writing it yourself; nothing that already worked has changed.
 - Packaged as UMD, CommonJS and ESM, with `verify-dist` checking every declared entry point loads the
   way a real consumer would before publishing.
 
+[0.7.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.7.0
+[0.6.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.6.0
+[0.5.2]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.2
 [0.5.1]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.1
 [0.5.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.0
 [0.4.2]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.4.2

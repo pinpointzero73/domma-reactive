@@ -165,12 +165,12 @@ export {registerBinding, unregisterBinding} from './handlers.js';
 export {registerExtender, unregisterExtender} from './extenders.js';
 
 // A component is a template plus an optional factory for the view model it
-// renders against — reusable markup that owns some state, which is the last
+// renders against - reusable markup that owns some state, which is the last
 // substantial thing Knockout could do here and this could not.
 //
 // Deliberately not a framework: no router, no lifecycle beyond an optional
 // dispose(), no async template loading, and no opinion about where the markup
-// came from. `componentDefinition` stays inside — it is how the binding finds a
+// came from. `componentDefinition` stays inside - it is how the binding finds a
 // registration, not something a consumer has a use for.
 export {registerComponent, unregisterComponent} from './components.js';
 

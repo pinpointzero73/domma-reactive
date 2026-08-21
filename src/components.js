@@ -1,5 +1,5 @@
 /**
- * Components — a registry, a params collector, and one binding handler.
+ * Components - a registry, a params collector, and one binding handler.
  *
  * A component is a template plus an optional factory that makes the view model
  * it renders against. That is the whole of it, and the reason it is so little
@@ -14,7 +14,7 @@
  * It was once ruled out on the grounds that a component model is a framework
  * decision, and a host framework has already made it. What changed is the goal:
  * capability parity with Knockout, which turns components from a choice into a
- * gap. What has NOT changed is the refusal to become a framework — there is no
+ * gap. What has NOT changed is the refusal to become a framework - there is no
  * router, no lifecycle beyond `dispose()`, no async template loading, and no
  * opinion about where a component's markup comes from.
  *
@@ -29,8 +29,8 @@
  * ── Registration throws; rendering warns ─────────────────────────────────────
  *
  * `registerComponent` throws on a bad definition, as `registerExtender` does. A
- * render-time failure — an unknown name, a param that will not parse, a `create`
- * that threw — warns exactly once and skips that component alone. The asymmetry
+ * render-time failure - an unknown name, a param that will not parse, a `create`
+ * that threw - warns exactly once and skips that component alone. The asymmetry
  * is deliberate: a bad registration is a programming error at startup, where a
  * bad expression is authored data met halfway through a paint, and taking the
  * page down over it would be the worse failure by far.
@@ -145,7 +145,7 @@ export function paramName(suffix) {
  *   data-params="cardParams"     an object the view model already holds
  *
  * The first is the common case and the one Knockout makes awkward, because
- * `params: {value: x}` means inventing an object literal — and object literals
+ * `params: {value: x}` means inventing an object literal - and object literals
  * are exactly what this expression language refuses, which is what lets bindings
  * parse without `eval`. The second is for many params at once. They merge, and
  * the attribute wins, because it is the more specific of the two.
@@ -155,8 +155,8 @@ export function paramName(suffix) {
  * A param is a constructor argument, not a live binding. What makes that
  * sufficient is that observables are references:
  *
- *   data-param-x="thing"         passes the observable — the parent sees writes
- *   data-param-x="thing.value"   passes a snapshot — it does not
+ *   data-param-x="thing"         passes the observable - the parent sees writes
+ *   data-param-x="thing.value"   passes a snapshot - it does not
  *
  * No code decides this and no convention has to be remembered: the two are
  * different expressions, and the difference is the same `.value` the author
@@ -169,7 +169,7 @@ export function paramName(suffix) {
  * computed OF an observable, and the view model would have to read `.value` on
  * some params and not others with no way to tell which from its own code.
  *
- * Frozen, because it is an input rather than scratch space — the same reasoning
+ * Frozen, because it is an input rather than scratch space - the same reasoning
  * that freezes a binding context. Observables inside it stay writable through
  * `.value`, which is the intended path back to the parent.
  *
@@ -196,7 +196,7 @@ export function collectParams(element, binding, context) {
         } else if (value === null || typeof value !== 'object') {
             warnOnce(
                 `component:params:${binding.id}`,
-                `data-params="${bag}" needs an object of params — got ` +
+                `data-params="${bag}" needs an object of params - got ` +
                 `${value === null ? 'null' : typeof value}, in ${binding.expr}`
             );
         } else {
@@ -242,7 +242,7 @@ const states = new WeakMap();
  * Build the view model, or fall back to the params when there is no `create`.
  *
  * A template-only component reads its params unqualified, which is what makes
- * the trivial case trivial — and the trivial case is where Knockout's
+ * the trivial case trivial - and the trivial case is where Knockout's
  * `viewModel`-or-constructor ambiguity does the most damage.
  *
  * Anything that throws in `create` takes that instance and nothing else: one
@@ -272,7 +272,7 @@ function buildViewModel(definition, params, element, binding, name) {
  * reference to it is held by the state object either way.
  *
  * A `dispose()` that throws is warned about and stepped over, as `disposeNode`
- * already does — a component that fails to clean up must not prevent every
+ * already does - a component that fails to clean up must not prevent every
  * component after it from cleaning up.
  */
 function teardown(state) {
@@ -300,7 +300,7 @@ function teardown(state) {
  *
  * `data-if` is, and the difference is worth stating. The compiler anchors an
  * attribute region around the WHOLE element (`scanRegionElements` takes
- * `elementRange`), so a region handler re-renders the element it is written on —
+ * `elementRange`), so a region handler re-renders the element it is written on -
  * which would put this binding's own `data-param-*` attributes inside the region
  * it replaces, and there would be no element left to read them from. A region is
  * `{open, close}` and carries no element reference; see nodes.js.
@@ -314,7 +314,7 @@ function teardown(state) {
  *
  * Which is why a literal takes inner quotes: `data-component="'contact-card'"`.
  * That costs one pair of quotes in the common case and buys dynamic components
- * for nothing — `data-component="currentView.value"` swaps what is rendered when
+ * for nothing - `data-component="currentView.value"` swaps what is rendered when
  * the observable changes, which is how a great many Knockout applications route.
  * Making this the one binding whose value was not an expression would have cost
  * a special case in the compiler and a documented exception to a rule the README
@@ -349,8 +349,8 @@ export function createComponentHandler(factoryFor) {
                 }
 
                 // Same component, already mounted: an unrelated update ran, and
-                // rebuilding would throw away the instance's own state — a
-                // half-typed input, a scroll position, an open panel — for
+                // rebuilding would throw away the instance's own state - a
+                // half-typed input, a scroll position, an open panel - for
                 // nothing.
                 if (state.name === name && state.instance !== null) continue;
 
@@ -360,7 +360,7 @@ export function createComponentHandler(factoryFor) {
                 if (typeof name !== 'string' || name === '') {
                     warnOnce(
                         `component:name:${binding.id}`,
-                        `data-component="${binding.expr}" needs a component name — got ` +
+                        `data-component="${binding.expr}" needs a component name - got ` +
                         `${name === null ? 'null' : typeof name}. Remember that a literal name ` +
                         `takes quotes, because every binding value is an expression: ` +
                         `data-component="'my-thing'"`
@@ -401,7 +401,7 @@ export function createComponentHandler(factoryFor) {
          *
          * `registerDisposer` above covers the other way a component ends: an
          * ancestor removing the subtree, which runs node-scoped disposers
-         * without anything being "destroyed". Neither path covers the other —
+         * without anything being "destroyed". Neither path covers the other -
          * `applyBindings`' dispose() runs detach hooks and its own teardowns but
          * does not walk node disposers, so a component activated in place would
          * leak its view model without this.

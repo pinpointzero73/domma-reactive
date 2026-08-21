@@ -1,7 +1,7 @@
 /**
  * The README's component examples, transcribed.
  *
- * README.md claims these run. This is where that claim is kept honest — the
+ * README.md claims these run. This is where that claim is kept honest - the
  * same reason src/tutorial.test.js exists. A paraphrase here would defeat the
  * point, so the markup and the definitions are copied rather than adapted.
  */

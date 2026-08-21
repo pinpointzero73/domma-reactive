@@ -46,7 +46,7 @@
  * A component's template resolves `$data` against its own view model, which is
  * what makes the common case read naturally. But a list inside that template
  * moves `$data` on to the row, and the component's own state becomes
- * unreachable — the same problem `$parent` solves for lists, met one layer up.
+ * unreachable - the same problem `$parent` solves for lists, met one layer up.
  *
  * `$component` is therefore inherited by `createChildContext` exactly as `$root`
  * is, so it keeps answering however deep the nesting goes. That is its whole
@@ -207,7 +207,7 @@ export function createChildContext(parent, data, index = null, length = null) {
  * The context inside a component's template.
  *
  * `$data` is the view model, so a template reads its own state unqualified, and
- * `$component` is the same object — the point of the name is that it survives
+ * `$component` is the same object - the point of the name is that it survives
  * into nested blocks, where `$data` no longer refers to the component. It is
  * inherited by `createChildContext` for exactly that reason, as `$root` is.
  *
@@ -217,7 +217,7 @@ export function createChildContext(parent, data, index = null, length = null) {
  *
  * `$parentContext` points at the enclosing context, so `$parents` walks straight
  * out of the component and on up the page. A component is a boundary for `$data`
- * and nothing else — the ancestry names deliberately see through it, because a
+ * and nothing else - the ancestry names deliberately see through it, because a
  * component rendered inside a list is still inside that list.
  *
  * @param {Object|*} parent     the enclosing context, or plain data

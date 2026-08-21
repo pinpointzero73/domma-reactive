@@ -3,7 +3,7 @@
  *
  * A tutorial is a promise that the code in it works. That promise rots silently:
  * a rename here, a changed default there, and the page a reader copies out no
- * longer does what the prose says it does — and nothing goes red, because
+ * longer does what the prose says it does - and nothing goes red, because
  * documentation is not on the test path.
  *
  * So it is, here. The markup below is Tutorial.md's `index.html` body and the
@@ -21,7 +21,7 @@ import {parseFragment} from './nodes.js';
 
 const GROUPS = ['Family', 'Friends', 'Work'];
 
-/** Tutorial.md — index.html, the body of #app. */
+/** Tutorial.md - index.html, the body of #app. */
 const MARKUP = `
 <div id="app">
     <p id="summary"><!-- dm text: summary.value -->loading&hellip;<!-- /dm --></p>
@@ -49,11 +49,11 @@ const MARKUP = `
     <!-- /dm -->
 </div>`;
 
-/** Tutorial.md — app.js, the contact-row component. */
+/** Tutorial.md - app.js, the contact-row component. */
 function registerContactRow() {
     registerComponent('contact-row', {
         template: `
-            <span class="show" data-if="!editing.value">{{contact.name.value}} &mdash; {{contact.email.value}}</span>
+            <span class="show" data-if="!editing.value">{{contact.name.value}} - {{contact.email.value}}</span>
             <input class="edit" data-if="editing.value"
                    data-model="contact.name.value" data-focus="editing.value">
             <span class="group">{{contact.group.value}}</span>
@@ -73,7 +73,7 @@ function registerContactRow() {
     });
 }
 
-/** Tutorial.md — app.js. */
+/** Tutorial.md - app.js. */
 function createApp() {
     registerContactRow();
 
@@ -215,7 +215,7 @@ describe('Tutorial.md - the contacts app', () => {
         flushSync();
 
         expect(all('#list li')).toHaveLength(1);
-        expect(one('#list li .show').textContent).toBe('Ada — ada@example.com');
+        expect(one('#list li .show').textContent).toBe('Ada - ada@example.com');
         expect(one('#draft-name').value).toBe('');
         expect(one('#summary').textContent.trim()).toBe('1 contact(s), 1 shown');
         expect(one('#none')).toBeNull();
@@ -411,7 +411,7 @@ describe('Tutorial.md - step 11, the row as a component', () => {
 
         expect(all('#list li')).toHaveLength(2);
         expect(all('#list .show').map((s) => s.textContent.trim()))
-            .toEqual(['Ada — ada@example.com', 'Grace — grace@example.com']);
+            .toEqual(['Ada - ada@example.com', 'Grace - grace@example.com']);
     });
 
     it('keeps editing private to the row, so one card at a time is an input', () => {
