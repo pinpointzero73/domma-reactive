@@ -233,6 +233,155 @@ export function collectParams(element, binding, context) {
     return Object.freeze(params);
 }
 
+// ── Slots ─────────────────────────────────────────────────────────────────────
+
+const SLOT_ATTRIBUTE = 'data-slot';
+
+/**
+ * Take the host element's children, keyed by which slot they belong to.
+ *
+ * ── Slot content is relocated, never recompiled ──────────────────────────────
+ *
+ * This markup was written at the usage site, so the enclosing template already
+ * annotated it, painted it and bound it to the OUTER context. Nothing about it
+ * needs compiling again, and that is what makes slots cheap: an effect holds a
+ * direct node reference, and `indexRoots` matches bindings to nodes by marker id
+ * anywhere in the subtree, so moving a node does not disturb its binding.
+ *
+ * It also means "slot content binds where it was written" needs no code to be
+ * true - it is simply what these nodes already are.
+ *
+ * The children are DETACHED, never disposed. They belong to the outer runtime;
+ * this handler is only moving them, and disposing something it does not own is
+ * the one thing that would make slots worse than no slots.
+ *
+ * A text node cannot carry an attribute, so bare text always lands in the
+ * default slot - as does the whitespace between labelled elements, which is
+ * harmless because HTML collapses it.
+ *
+ * @param {Element} element
+ * @returns {Map<string, Array<Node>>} name -> nodes, '' being the default slot
+ */
+export function harvestSlotContent(element) {
+    const map = new Map();
+
+    for (const node of [...element.childNodes]) {
+        const name = node.nodeType === 1 ? (node.getAttribute(SLOT_ATTRIBUTE) ?? '') : '';
+
+        if (!map.has(name)) map.set(name, []);
+        map.get(name).push(node);
+        node.remove();
+    }
+
+    return map;
+}
+
+/**
+ * The comment pair marking one slot inside an instance.
+ *
+ * Found by walking rather than held from compile time, because the anchors are
+ * cloned per instance: the factory knows the ids, only the instance knows the
+ * nodes.
+ *
+ * @param {Array<Node>} roots the instance's nodes
+ * @param {string} id
+ * @returns {{open: Comment, close: Comment}|null}
+ */
+function findSlotAnchors(roots, id) {
+    const openData = `dm:${id}`;
+    const closeData = `/dm:${id}`;
+    let open = null;
+    let close = null;
+
+    const visit = (node) => {
+        if (node.nodeType === 8) {
+            if (node.data === openData) open = node;
+            else if (node.data === closeData) close = node;
+            return;
+        }
+        for (const child of node.childNodes) visit(child);
+    };
+
+    for (const root of roots) {
+        visit(root);
+        if (open !== null && close !== null) return {open, close};
+    }
+
+    return null;
+}
+
+/** Every node strictly between two anchors. */
+function between(open, close) {
+    const out = [];
+    for (let n = open.nextSibling; n !== null && n !== close; n = n.nextSibling) out.push(n);
+    return out;
+}
+
+/**
+ * Move projected content into the instance's slots.
+ *
+ * A slot the map has content for loses its fallback and gains that content; a
+ * slot with nothing projected keeps the fallback it was compiled with. That one
+ * rule is also why the two resolve against different contexts: the fallback came
+ * from the component's template and reads its view model, while projected nodes
+ * came from the page and read the page. One hole, two scopes, decided by which
+ * template supplied the markup.
+ *
+ * Returns what was placed, so teardown can take back exactly those nodes rather
+ * than trying to tell projected content from component markup by inspection -
+ * which would be guesswork the moment a component moved a node itself.
+ *
+ * @returns {Array<{name: string, nodes: Array<Node>}>} what was placed
+ */
+function fillSlots(instance, factory, slotMap, binding, name) {
+    const placed = [];
+    const roots = instance.allNodes();
+    const seen = new Set();
+
+    for (const slot of factory.slots ?? []) {
+        if (seen.has(slot.name)) {
+            warnOnce(
+                `component:slot:duplicate:${binding.id}:${name}:${slot.name}`,
+                `the component "${name}" declares more than one ` +
+                `${slot.name === '' ? 'default slot' : `slot named "${slot.name}"`}. ` +
+                'The first is filled and the rest keep their fallback content.'
+            );
+            continue;
+        }
+        seen.add(slot.name);
+
+        const content = slotMap.get(slot.name);
+        if (content === undefined || content.length === 0) continue;
+
+        const anchors = findSlotAnchors(roots, slot.id);
+        if (anchors === null) continue;
+
+        for (const node of between(anchors.open, anchors.close)) node.remove();
+        for (const node of content) anchors.close.parentNode.insertBefore(node, anchors.close);
+
+        placed.push({name: slot.name, nodes: content});
+    }
+
+    for (const [slotName, nodes] of slotMap) {
+        if (seen.has(slotName) || nodes.length === 0) continue;
+
+        // Indented markup puts whitespace text nodes in the default slot.
+        // Warning about those would fire on every well-formatted usage.
+        if (nodes.every((n) => n.nodeType === 3 && n.data.trim() === '')) continue;
+
+        warnOnce(
+            `component:slot:unmatched:${binding.id}:${name}:${slotName}`,
+            slotName === ''
+                ? `the component "${name}" was given content but declares no {{#slot}}, so that `
+                  + 'content is not rendered. Add a slot to its template, or remove the content.'
+                : `the component "${name}" has no slot named "${slotName}", so that content is `
+                  + "not rendered. Check data-slot against the template's {{#slot}} blocks."
+        );
+    }
+
+    return placed;
+}
+
 // ── Mounting ──────────────────────────────────────────────────────────────────
 
 /** host element → what is mounted inside it. */
@@ -277,6 +426,20 @@ function buildViewModel(definition, params, element, binding, name) {
  */
 function teardown(state) {
     if (state.instance === null) return;
+
+    /*
+     * Take the projected content back BEFORE anything is disposed. These nodes
+     * belong to the outer runtime; the instance is about to be destroyed, and
+     * anything still inside it goes with it. Detaching them keeps them alive
+     * with their bindings intact, ready for the replacement.
+     *
+     * Exactly the nodes that were placed, by reference - not a guess based on
+     * what the DOM happens to look like now.
+     */
+    for (const {nodes} of state.placed) {
+        for (const node of nodes) node.remove();
+    }
+    state.placed = [];
 
     const vm = state.viewModel;
     if (vm !== null && typeof vm === 'object' && typeof vm.dispose === 'function') {
@@ -343,7 +506,10 @@ export function createComponentHandler(factoryFor) {
             for (const element of nodes) {
                 let state = states.get(element);
                 if (state === undefined) {
-                    state = {name: null, instance: null, viewModel: null};
+                    state = {
+                        name: null, instance: null, viewModel: null,
+                        slots: null, placed: []
+                    };
                     states.set(element, state);
                     registerDisposer(element, () => teardown(state));
                 }
@@ -355,6 +521,11 @@ export function createComponentHandler(factoryFor) {
                 if (state.name === name && state.instance !== null) continue;
 
                 teardown(state);
+
+                // Harvested once per host, not once per mount: a swap must
+                // carry the same content into the replacement, and after the
+                // first mount the children have already been taken.
+                if (state.slots === null) state.slots = harvestSlotContent(element);
                 element.replaceChildren();
 
                 if (typeof name !== 'string' || name === '') {
@@ -388,6 +559,14 @@ export function createComponentHandler(factoryFor) {
                 state.instance = createInstance(factory, context, viewModel, null, null, {
                     context: createComponentContext(context, viewModel)
                 });
+
+                state.placed = fillSlots(state.instance, factory, state.slots, binding, name);
+
+                // The fallback bindings were indexed and primed by createInstance
+                // before the fill removed their nodes. Re-index so the runtime
+                // notices: a binding whose nodes are gone is exactly the case
+                // index() already handles, and it disposes their effects.
+                if (state.placed.length > 0) state.instance.runtime.index();
 
                 // createInstance leaves its nodes in a fragment, anchors included.
                 element.append(...state.instance.allNodes());

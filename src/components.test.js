@@ -19,6 +19,7 @@ import {flushSync, liveComputations} from './graph.js';
 import {liveDisposers} from './lifecycle.js';
 import {
     collectParams,
+    harvestSlotContent,
     componentDefinition,
     paramName,
     registerComponent,
@@ -503,5 +504,173 @@ describe('through applyBindings', () => {
         expect([...host.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['1', '2']);
 
         handle.dispose();
+    });
+});
+
+describe('harvestSlotContent', () => {
+    it('puts unlabelled children in the default slot', () => {
+        const node = el(`<div><b>one</b><i>two</i></div>`);
+        const map = harvestSlotContent(node);
+
+        expect(map.get('').map((n) => n.tagName)).toEqual(['B', 'I']);
+    });
+
+    it('keys labelled children by their data-slot', () => {
+        const node = el(`<div><h2 data-slot="header">h</h2><p>body</p></div>`);
+        const map = harvestSlotContent(node);
+
+        expect(map.get('header').map((n) => n.tagName)).toEqual(['H2']);
+        expect(map.get('').map((n) => n.tagName)).toEqual(['P']);
+    });
+
+    it('groups several elements into one named slot, in document order', () => {
+        const node = el(`<div><b data-slot="a">1</b><i data-slot="a">2</i></div>`);
+        expect(harvestSlotContent(node).get('a').map((n) => n.textContent)).toEqual(['1', '2']);
+    });
+
+    it('detaches what it harvests, leaving the host empty', () => {
+        const node = el(`<div><b>one</b></div>`);
+        harvestSlotContent(node);
+
+        expect(node.childNodes.length).toBe(0);
+    });
+
+    it('does not dispose what it harvests - the outer runtime owns it', () => {
+        const node = el(`<div><b>one</b></div>`);
+        const b = node.firstElementChild;
+        harvestSlotContent(node);
+
+        expect(b.isConnected).toBe(false);
+        expect(b.textContent).toBe('one');
+    });
+
+    it('returns an empty map for a host with no children', () => {
+        expect(harvestSlotContent(el(`<div></div>`)).size).toBe(0);
+    });
+
+    it('sends text nodes to the default slot', () => {
+        const node = el(`<div>bare text</div>`);
+        expect(harvestSlotContent(node).get('')).toHaveLength(1);
+    });
+});
+
+describe('slots', () => {
+    it('projects the default slot', () => {
+        registerComponent('probe', {template: '<div class="frame">{{#slot}}{{/slot}}</div>'});
+
+        const {host} = mount(`<div data-component="'probe'"><b>hello</b></div>`, {});
+
+        expect(host.querySelector('.frame b').textContent).toBe('hello');
+    });
+
+    it('projects named slots', () => {
+        registerComponent('probe', {
+            template: '<header>{{#slot header}}{{/slot}}</header><main>{{#slot}}{{/slot}}</main>'
+        });
+
+        const {host} = mount(
+            `<div data-component="'probe'"><h2 data-slot="header">H</h2><p>B</p></div>`, {}
+        );
+
+        expect(host.querySelector('header h2').textContent).toBe('H');
+        expect(host.querySelector('main p').textContent).toBe('B');
+    });
+
+    it('renders the fallback when nothing is projected', () => {
+        registerComponent('probe', {template: '<div>{{#slot}}<i>default</i>{{/slot}}</div>'});
+
+        const {host} = mount(`<div data-component="'probe'"></div>`, {});
+
+        expect(host.querySelector('i').textContent).toBe('default');
+    });
+
+    it('does not render the fallback when something is projected', () => {
+        registerComponent('probe', {template: '<div>{{#slot}}<i>default</i>{{/slot}}</div>'});
+
+        const {host} = mount(`<div data-component="'probe'"><b>given</b></div>`, {});
+
+        expect(host.querySelector('i')).toBeNull();
+        expect(host.querySelector('b').textContent).toBe('given');
+    });
+
+    it('resolves the fallback against the COMPONENT view model', () => {
+        registerComponent('probe', {
+            template: '<div>{{#slot}}<i data-bind-text="mine"></i>{{/slot}}</div>',
+            create: () => ({mine: 'component'})
+        });
+
+        const {host} = mount(`<div data-component="'probe'"></div>`, {mine: 'page'});
+
+        expect(host.querySelector('i').textContent).toBe('component');
+    });
+
+    it('resolves projected content against the OUTER context', () => {
+        registerComponent('probe', {
+            template: '<div>{{#slot}}{{/slot}}</div>',
+            create: () => ({who: 'component'})
+        });
+
+        const {host} = mount(
+            `<div data-component="'probe'"><b data-bind-text="who"></b></div>`,
+            {who: 'page'}
+        );
+
+        expect(host.querySelector('b').textContent).toBe('page');
+    });
+
+    it('keeps projected content live after projection', () => {
+        registerComponent('probe', {template: '<div>{{#slot}}{{/slot}}</div>'});
+
+        const who = observable('Ada');
+        const {host} = mount(
+            `<div data-component="'probe'"><b data-bind-text="who.value"></b></div>`, {who}
+        );
+        expect(host.querySelector('b').textContent).toBe('Ada');
+
+        who.value = 'Grace';
+        flushSync();
+
+        expect(host.querySelector('b').textContent).toBe('Grace');
+    });
+
+    it('lets a projected data-model write back to the page', () => {
+        registerComponent('probe', {template: '<div>{{#slot}}{{/slot}}</div>'});
+
+        const name = observable('Ada');
+        const {host} = mount(
+            `<div data-component="'probe'"><input data-model="name.value"></div>`, {name}
+        );
+
+        const input = host.querySelector('input');
+        input.value = 'Grace';
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+        flushSync();
+
+        expect(name.value).toBe('Grace');
+    });
+
+    it('anchors a slot inside a tbody, where an element spelling cannot go', () => {
+        registerComponent('probe', {
+            template: '<table><tbody>{{#slot}}<tr><td>fallback</td></tr>{{/slot}}</tbody></table>'
+        });
+
+        const {host} = mount(`<div data-component="'probe'"></div>`, {});
+
+        // The anchors survived inside <tbody>; <dm-slot> would have been
+        // hoisted out of the table by the parser before any of this ran.
+        expect(host.querySelector('table tbody tr td').textContent).toBe('fallback');
+    });
+
+    it('projects real rows when the host is itself a tbody', () => {
+        registerComponent('probe', {template: '{{#slot}}{{/slot}}'});
+
+        // The usage site has to be valid HTML too: <tr> is only kept by the
+        // parser inside a table context, so the host element is the <tbody>.
+        const {host} = mount(
+            `<table><tbody data-component="'probe'"><tr><td>cell</td></tr></tbody></table>`,
+            {}
+        );
+
+        expect(host.querySelector('tbody tr td').textContent).toBe('cell');
     });
 });
