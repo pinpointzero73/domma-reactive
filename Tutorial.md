@@ -1,7 +1,7 @@
-# Tutorial - build a contacts system
+# Tutorial — build a contacts system
 
-A step-by-step build of a working contacts page: add, edit in place, search, filter, delete, and remember
-everything across a reload. About 120 lines of JavaScript and one HTML file.
+A step-by-step build of a working contacts page: add, edit in place, search, filter, delete, remember
+everything across a reload, and extract the row into a reusable component. About 120 lines of JavaScript and one HTML file.
 
 Every listing below is real. The finished application is transcribed into [`src/tutorial.test.js`](src/tutorial.test.js)
 and runs on every `npm test`, so if a change to the package breaks this page, something goes red.
@@ -17,9 +17,10 @@ and runs on every `npm test`, so if a change to the package breaks this page, so
 | [5](#step-5--search-that-waits-for-you-to-stop-typing) | `.extend({rateLimit})` |
 | [6](#step-6--edit-in-place) | `data-if`, `data-focus`, per-item bindings |
 | [7](#step-7--delete) | `$parent`, `$data`, `observableArray.remove` |
-| [8](#step-8--the-empty-state) | virtual bindings - `<!-- dm if: … -->` |
+| [8](#step-8--the-empty-state) | virtual bindings — `<!-- dm if: … -->` |
 | [9](#step-9--remember-it) | `effect` + `localStorage` |
 | [10](#step-10--tidying-up) | disposal |
+| [11](#step-11--make-the-row-a-component) | `registerComponent`, `data-component`, params |
 
 ---
 
@@ -30,7 +31,7 @@ npm install domma-reactive
 ```
 
 Create two files next to each other: `index.html` and `app.js`. The styling below is plain inline CSS so the page
-has no dependencies at all - swap in Tailwind or Bootstrap classes if you would rather, since nothing in this
+has no dependencies at all — swap in Tailwind or Bootstrap classes if you would rather, since nothing in this
 tutorial depends on how it looks.
 
 ```html
@@ -73,14 +74,14 @@ markup. Here we use the platform directly, because that is all this package assu
 
 ---
 
-## Step 1 - the shape of a contact
+## Step 1 — the shape of a contact
 
 Start `app.js` with the state. Everything that can change is an `observable`; the collection is an
 `observableArray`.
 
 ```javascript
 import {
-    applyBindings, computed, effect, observable, observableArray
+    applyBindings, computed, effect, observable, observableArray, registerComponent
 } from 'domma-reactive';
 
 const GROUPS = ['Family', 'Friends', 'Work'];
@@ -122,14 +123,14 @@ observable at all, since the expression language in a binding refuses method cal
 
 ---
 
-## Step 2 - show the list
+## Step 2 — show the list
 
 Add the list to `index.html`, inside `#app`:
 
 ```html
 <ul id="list" data-each="visible.value key=id">
     <li>
-        <span class="show">{{name.value}} - {{email.value}}</span>
+        <span class="show">{{name.value}} &mdash; {{email.value}}</span>
         <span class="group">{{group.value}}</span>
     </li>
 </ul>
@@ -145,7 +146,7 @@ const vm = {contacts, groups, visible};
 const handle = applyBindings(vm, document.querySelector('#app'));
 ```
 
-Load the page and you get nothing - because `contacts` is empty. Add one from the console
+Load the page and you get nothing — because `contacts` is empty. Add one from the console
 (`contacts.push(make({name: 'Ada', email: 'ada@example.com'}))`) and the row appears.
 
 ### What just happened
@@ -156,13 +157,13 @@ elements with no framework classes.
 
 `data-each="visible.value key=id"` is a **keyed list**. The element's initial contents are its item template: they
 are lifted out, compiled once, and cloned per item. Inside that template `{{ }}` works and every expression
-resolves against the item - `{{name.value}}` is *this contact's* name.
+resolves against the item — `{{name.value}}` is *this contact's* name.
 
 `key=id` is not decoration and not optional. It is how the list works out, on every change, which rows are the
-same rows as before. Rows that survive a change **keep their exact DOM nodes** - so focus, a half-typed input, a
+same rows as before. Rows that survive a change **keep their exact DOM nodes** — so focus, a half-typed input, a
 scroll position and a CSS transition all survive with them. Step 6 depends on this completely.
 
-`visible` is a `computed` - a derived value that recomputes only when something it read has changed. Right now it
+`visible` is a `computed` — a derived value that recomputes only when something it read has changed. Right now it
 just passes `contacts` through, which looks pointless. Steps 4 and 5 are why it exists.
 
 > **Why `visible.value` and not `visible`?** No unwrapping, anywhere. A binding reads through `.value` exactly as
@@ -170,7 +171,7 @@ just passes `contacts` through, which looks pointless. Steps 4 and 5 are why it 
 
 ---
 
-## Step 3 - add a contact
+## Step 3 — add a contact
 
 The form, in `index.html`, above the list:
 
@@ -217,7 +218,7 @@ Remember to add `draft` and `valid` to the `vm` object, or the bindings have not
 
 ### What just happened
 
-`data-model` is **two-way**: the input shows the value, and typing writes back. It needs a *settable path* -
+`data-model` is **two-way**: the input shows the value, and typing writes back. It needs a *settable path* —
 `draft.name.value` is one, because the binding can evaluate `draft.name` and assign `value` on it. An expression
 like `a && b` is not, and would be refused with a warning, because a control you cannot write through is not
 two-way.
@@ -229,7 +230,7 @@ draft fields, the button enables and disables itself with no code saying so anyw
 
 - The DOM event is passed as the **last** argument, so `save(event)` works, and so does
   `remove(item)` → `remove(item, event)`.
-- **Returning `false` calls `preventDefault()`** - which is why the form does not reload the page.
+- **Returning `false` calls `preventDefault()`** — which is why the form does not reload the page.
 
 The validation lives in a `computed`, not in the submit handler. The handler still checks it, because a form can be
 submitted by pressing Enter in a field, but the *button* and the *check* are now the same single expression rather
@@ -237,7 +238,7 @@ than two rules that can drift apart.
 
 ---
 
-## Step 4 - the two drop-downs
+## Step 4 — the two drop-downs
 
 Add a group picker to the form, and a filter above the list:
 
@@ -269,11 +270,11 @@ const visible = computed(() => {
 
 ### What just happened
 
-`data-options` fills a `<select>` from a collection. `{{#each}}<option>` would produce the same markup - what it
+`data-options` fills a `<select>` from a collection. `{{#each}}<option>` would produce the same markup — what it
 would not produce is the *selection*, which is the whole difficulty: rebuilding a select's options resets it, and
 the selection lives on the select rather than on any option. This binding rebuilds and puts the selection back.
 
-`data-options-caption="'All groups'"` adds a leading option whose value is the empty string - which is why `visible`
+`data-options-caption="'All groups'"` adds a leading option whose value is the empty string — which is why `visible`
 tests `group === ''` for "no filter". Note the **quotes inside the quotes**: every binding value here is an
 expression, so a literal string needs to look like one. `data-options-caption="All groups"` would look for a
 variable called `All`.
@@ -287,12 +288,12 @@ Two companions you do not need yet, but will:
 ```
 
 Both are expressions evaluated against each item, so `$index` resolves and a label can be computed. Knockout takes a
-property *name* here and cannot do that. And when `data-options-value` yields something that is not a string - a
-number, or the item object itself - `data-model` reads back **that value**, not `"[object Object]"`.
+property *name* here and cannot do that. And when `data-options-value` yields something that is not a string — a
+number, or the item object itself — `data-model` reads back **that value**, not `"[object Object]"`.
 
 ---
 
-## Step 5 - search that waits for you to stop typing
+## Step 5 — search that waits for you to stop typing
 
 ```html
 <!-- in .filters, before the select -->
@@ -328,7 +329,7 @@ The important half is what it does *not* do:
 
 ```javascript
 query.value = 'ada';
-query.value;          // 'ada' - immediately
+query.value;          // 'ada' — immediately
 ```
 
 **The write is never delayed, only the announcement.** Knockout's original `throttle` delayed the write itself,
@@ -343,18 +344,18 @@ observable('').extend({rateLimit: {timeout: 200, method: 'notifyAtFixedRate'}});
 ```
 
 Because the rate limit is on a timer rather than on the graph's flush, `flushSync()` will not deliver a held
-notification - in a test, advance the clock.
+notification — in a test, advance the clock.
 
 ---
 
-## Step 6 - edit in place
+## Step 6 — edit in place
 
 Replace the row template in `index.html`:
 
 ```html
 <ul id="list" data-each="visible.value key=id">
     <li>
-        <span class="show" data-if="!editing.value">{{name.value}} - {{email.value}}</span>
+        <span class="show" data-if="!editing.value">{{name.value}} &mdash; {{email.value}}</span>
         <input class="edit" data-if="editing.value" data-model="name.value" data-focus="editing.value">
         <span class="group">{{group.value}}</span>
         <button class="edit-btn" data-on-click="$parent.edit($data)">Edit</button>
@@ -375,26 +376,26 @@ into text, with the change kept.
 
 This is the step that pays for `key=id`.
 
-`data-if` puts the element in the document or takes it out - it does not hide it with CSS, because an element
+`data-if` puts the element in the document or takes it out — it does not hide it with CSS, because an element
 hidden with CSS is still focusable and still read aloud by a screen reader, and a binding named after a conditional
 that leaves it there would be lying.
 
 `data-focus` is two-way, like `data-model`, but for focus: setting `editing.value = true` moves the caret into the
 field, and the field losing focus writes `false` back. That single binding is the whole "click away to finish
-editing" behaviour - there is no blur handler anywhere. (Knockout calls this `hasFocus`.)
+editing" behaviour — there is no blur handler anywhere. (Knockout calls this `hasFocus`.)
 
 `$parent.edit($data)` is how a row reaches the page it lives on. Inside a list `$data` is the *item*, so `$parent`
 is the view model and `$data` is the contact that was clicked. This is also the one place a binding may **call** a
 method: an event fires outside every effect, so a call there cannot cause a render to have side effects.
 
 And the reason it all holds together: because the list is keyed, typing in that input survives anything happening
-to the collection. Add a contact from another tab, sort the list, let a search re-run - the row being edited is the
+to the collection. Add a contact from another tab, sort the list, let a search re-run — the row being edited is the
 same DOM node it was, so the caret does not move and the half-typed name is not lost. Without `key=`, every one of
 those events would rebuild the row and throw the edit away.
 
 ---
 
-## Step 7 - delete
+## Step 7 — delete
 
 ```html
 <!-- after the Edit button -->
@@ -414,17 +415,17 @@ contacts.remove(ada);                       // that exact object, by identity
 contacts.remove((c) => c.group.value === 'Work');   // everything the test accepts
 ```
 
-The row disappears and its instance is disposed - nodes *and* the effects behind its bindings. That second half
+The row disappears and its instance is disposed — nodes *and* the effects behind its bindings. That second half
 matters: an effect is a live node in the dependency graph and dropping the DOM does not drop it.
 
 There is also `destroy()`, which **marks** an item `_destroy: true` and leaves it in the collection. That is for
 servers that delete on a flag in the payload (Rails' `accepts_nested_attributes_for`), so the array must still
-carry the item at submit time while no longer showing it - every render path here skips a marked one. Unless you
+carry the item at submit time while no longer showing it — every render path here skips a marked one. Unless you
 are talking to such a server, `remove()` is the one you want.
 
 ---
 
-## Step 8 - the empty state
+## Step 8 — the empty state
 
 After the `<ul>`:
 
@@ -440,7 +441,7 @@ const empty = computed(() => visible.value.length === 0);
 
 ### What just happened
 
-That is a **virtual binding** - a binding delimited by comments rather than attached to an element. Here it is
+That is a **virtual binding** — a binding delimited by comments rather than attached to an element. Here it is
 merely tidy, but the reason it exists is the case where there is no element to spare: a run of `<li>`s, three
 `<td>`s in a row. Wrapping them in a `<div>` to carry a `data-if` changes the layout, and inside a table it is not
 even valid HTML that a browser will keep.
@@ -458,7 +459,7 @@ Knockout spells this `<!-- ko if: x --> … <!-- /ko -->`.
 
 ---
 
-## Step 9 - remember it
+## Step 9 — remember it
 
 ```javascript
 const KEY = 'contacts';
@@ -485,7 +486,7 @@ for (const row of stored) contacts.push(make(row));
 ### What just happened
 
 An `effect` runs immediately, collects whatever it read, and re-runs when any of it changes. `snapshot()` reads
-`contacts.value` **and** `.value` on every field of every contact - so the effect depends on all of them, and an
+`contacts.value` **and** `.value` on every field of every contact — so the effect depends on all of them, and an
 edit made in Step 6 persists just as an addition does. Nothing had to say "also save when a name changes".
 
 Note that `nextId` restarts at 1 on reload while the stored rows already have ids. Give `make` the stored id when
@@ -503,11 +504,11 @@ const make = ({id, name = '', email = '', group = GROUPS[0]} = {}) => {
 ```
 
 Two ids that collide would give two rows the same key, which the list warns about and then keeps apart by
-position - correct on screen, but with reconciliation quietly switched off for them.
+position — correct on screen, but with reconciliation quietly switched off for them.
 
 ---
 
-## Step 10 - tidying up
+## Step 10 — tidying up
 
 `applyBindings` returns a handle:
 
@@ -520,7 +521,7 @@ saved.dispose();
 ```
 
 `dispose()` drops every effect, listener, list instance and marker it created, and leaves the markup as it found
-it. Effects you created yourself - `saved`, above - are yours to stop.
+it. Effects you created yourself — `saved`, above — are yours to stop.
 
 On a page that lives until the tab closes this is academic. In a single-page application that swaps views, skipping
 it is a leak that is invisible in the DOM: the markup looks right while the dependency graph grows without bound
@@ -532,6 +533,103 @@ and effects go on recomputing against nodes no document contains.
 | `applyBindings(…)` | `handle.dispose()` |
 | `compile(…)` | `controller.destroy()` |
 | `observable.subscribe(fn)` | the returned `off()` |
+
+---
+
+## Step 11 — make the row a component
+
+The row works, but look at where its state lives. `editing` is a field on the *contact*, sitting alongside `name` and
+`email` as though whether you happen to be editing someone were a fact about them. And `edit()` is a method on the page,
+reached from the row as `$parent.edit($data)`.
+
+Both are there because a `data-each` body has nowhere else to put them. A component does.
+
+Register one in `app.js`:
+
+```javascript
+import {registerComponent} from 'domma-reactive';
+
+registerComponent('contact-row', {
+    template: `
+        <span class="show" data-if="!editing.value">{{contact.name.value}} &mdash; {{contact.email.value}}</span>
+        <input class="edit" data-if="editing.value"
+               data-model="contact.name.value" data-focus="editing.value">
+        <span class="group">{{contact.group.value}}</span>
+        <button class="edit-btn" data-on-click="edit">Edit</button>
+        <button class="del" data-on-click="remove">Delete</button>`,
+
+    create({contact, remove}) {
+        const editing = observable(false);
+
+        return {
+            contact,
+            editing,
+            edit() { editing.value = true; },
+            remove() { remove(contact); }
+        };
+    }
+});
+```
+
+Then shrink the row in `index.html` to the one line that says what it is:
+
+```html
+<ul id="list" data-each="visible.value key=id">
+    <li data-component="'contact-row'"
+        data-param-contact="$data"
+        data-param-remove="$parent.remove"></li>
+</ul>
+```
+
+Two things come out of `app.js` and do not go back. `make()` loses `editing`:
+
+```javascript
+return {
+    id: id ?? nextId++,
+    name: observable(name),
+    email: observable(email),
+    group: observable(group)
+};
+```
+
+and the view model loses `edit()` entirely.
+
+The page behaves exactly as it did.
+
+### What just happened
+
+**`editing` became private.** Each card creates its own, in its own `create()`. Ten rows have ten of them and none can
+see the others — which was already true in spirit, and is now true in the code. A contact is once again just a contact:
+`name`, `email`, `group`, `id`. Nothing about the interface is stored on the data any more.
+
+**The card was given what it needs and nothing else.** `data-param-contact="$data"` hands it the contact;
+`data-param-remove="$parent.remove"` hands it a way to say "delete me". It cannot reach the search box, the filter or
+the rest of the list, because it was never given them. `$parent.edit($data)` could reach all of it.
+
+**The edit still writes through to the page**, because `data-param-contact="$data"` passes the contact *by reference* —
+so `contact.name` inside the card is the same observable `visible` reads. That is the rule worth remembering:
+
+| Markup | The card receives | Can it write back? |
+|--------|-------------------|--------------------|
+| `data-param-contact="$data"` | the contact itself | **yes** |
+| `data-param-name="name.value"` | a copy of the string | no |
+
+Nothing decides this — they are different expressions, and the difference is the same `.value` you have been reading
+through since Step 1.
+
+**The name is in quotes** — `data-component="'contact-row'"` — because every binding value here is an expression, and
+without them it would name a *variable* called `contact-row`. The cost is a pair of quotes. What it buys is that
+`data-component="whichRow.value"` would swap the component when the observable changed, which is worth far more than
+the quotes cost.
+
+**Keyed reconciliation still holds.** The card mid-edit keeps its DOM node when another contact is deleted, with the
+caret where it was and the half-typed name intact — the same guarantee `key=id` bought in Step 6, now with the
+component's own state riding along inside it. Delete a row and its card is disposed with it: view model first, then its
+effects, then its nodes.
+
+If the card needed to clean something up — a timer, a subscription, a listener on `window` — it would return a
+`dispose()` and that would be called at exactly that moment. That is the only lifecycle hook there is, which is
+deliberate.
 
 ---
 
@@ -559,13 +657,9 @@ and effects go on recomputing against nodes no document contains.
     </div>
 
     <ul id="list" data-each="visible.value key=id">
-        <li>
-            <span class="show" data-if="!editing.value">{{name.value}} - {{email.value}}</span>
-            <input class="edit" data-if="editing.value" data-model="name.value" data-focus="editing.value">
-            <span class="group">{{group.value}}</span>
-            <button class="edit-btn" data-on-click="$parent.edit($data)">Edit</button>
-            <button class="del" data-on-click="$parent.remove($data)">Delete</button>
-        </li>
+        <li data-component="'contact-row'"
+            data-param-contact="$data"
+            data-param-remove="$parent.remove"></li>
     </ul>
 
     <!-- dm if: empty.value -->
@@ -592,10 +686,32 @@ const make = ({id, name = '', email = '', group = GROUPS[0]} = {}) => {
         id: id ?? nextId++,
         name: observable(name),
         email: observable(email),
-        group: observable(group),
-        editing: observable(false)
+        group: observable(group)
     };
 };
+
+// ── The row component ────────────────────────────────────────────────────────
+
+registerComponent('contact-row', {
+    template: `
+        <span class="show" data-if="!editing.value">{{contact.name.value}} &mdash; {{contact.email.value}}</span>
+        <input class="edit" data-if="editing.value"
+               data-model="contact.name.value" data-focus="editing.value">
+        <span class="group">{{contact.group.value}}</span>
+        <button class="edit-btn" data-on-click="edit">Edit</button>
+        <button class="del" data-on-click="remove">Delete</button>`,
+
+    create({contact, remove}) {
+        const editing = observable(false);
+
+        return {
+            contact,
+            editing,
+            edit() { editing.value = true; },
+            remove() { remove(contact); }
+        };
+    }
+});
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -651,10 +767,6 @@ const vm = {
         return false;
     },
 
-    edit(item) {
-        item.editing.value = true;
-    },
-
     remove(item) {
         contacts.remove(item);
     }
@@ -688,8 +800,11 @@ const handle = applyBindings(vm, document.querySelector('#app'));
 | `data-options` renders nothing | Handed the observable rather than the array | `data-options="groups.value"` |
 | The caption looks for a variable | A binding value is an expression | `data-options-caption="'All groups'"` |
 | `{{total.get()}}` will not parse | An expression cannot call a method | `total.value` |
-| A binding is silently skipped | Its expression did not parse - look for the warning | The warning names the expression |
+| A binding is silently skipped | Its expression did not parse — look for the warning | The warning names the expression |
 | Editing an object in place changes nothing | The change gate compares old and new, which are the same reference | Produce a new value |
+| `data-component` warns that the name is not a string | A binding value is an expression, so it read a *variable* | `data-component="'contact-row'"` |
+| A card's params are all `undefined` | `data-param-*` on an element with no `data-component` | Check the component attribute is there and spelled right |
+| An edit inside a card does not reach the page | The param passed a copy: `data-param-name="name.value"` | Pass the observable: `data-param-contact="$data"` |
 
 Nothing in the binding layer throws on bad input. Every failure above logs exactly one warning naming the
 expression, and skips that binding alone.
@@ -698,11 +813,12 @@ expression, and skips that binding alone.
 
 ## Where next
 
-- [README](README.md) - the full API, and the reasoning behind each decision
-- [Coming from Knockout](README.md#coming-from-knockout) - a spelling-by-spelling map
-- [Keyed lists](README.md#keyed-lists) - what reconciliation guarantees, and what it does not
-- [Expressions](README.md#expressions) - exactly what a binding value may contain, and why the list stops there
+- [README](README.md) — the full API, and the reasoning behind each decision
+- [Coming from Knockout](README.md#coming-from-knockout) — a spelling-by-spelling map
+- [Keyed lists](README.md#keyed-lists) — what reconciliation guarantees, and what it does not
+- [Components](README.md#components) — both param spellings, `$component`, swapping and disposal
+- [Expressions](README.md#expressions) — exactly what a binding value may contain, and why the list stops there
 
 If you would rather generate the markup than annotate it, `compile()` is the same machinery pointed the other way:
 it turns a mustache template into DOM. `applyBindings` was the right choice here because the page owns its
-markup - a server-rendered contacts page would work unchanged.
+markup — a server-rendered contacts page would work unchanged.

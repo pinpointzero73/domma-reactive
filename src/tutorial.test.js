@@ -3,7 +3,7 @@
  *
  * A tutorial is a promise that the code in it works. That promise rots silently:
  * a rename here, a changed default there, and the page a reader copies out no
- * longer does what the prose says it does - and nothing goes red, because
+ * longer does what the prose says it does — and nothing goes red, because
  * documentation is not on the test path.
  *
  * So it is, here. The markup below is Tutorial.md's `index.html` body and the
@@ -14,13 +14,14 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {applyBindings} from './apply-bindings.js';
+import {registerComponent, unregisterComponent} from './components.js';
 import {computed, effect, flushSync} from './graph.js';
 import {observable, observableArray} from './observable.js';
 import {parseFragment} from './nodes.js';
 
 const GROUPS = ['Family', 'Friends', 'Work'];
 
-/** Tutorial.md - index.html, the body of #app. */
+/** Tutorial.md — index.html, the body of #app. */
 const MARKUP = `
 <div id="app">
     <p id="summary"><!-- dm text: summary.value -->loading&hellip;<!-- /dm --></p>
@@ -38,13 +39,9 @@ const MARKUP = `
             data-options-caption="'All groups'"></select>
 
     <ul id="list" data-each="visible.value key=id">
-        <li>
-            <span class="show" data-if="!editing.value">{{name.value}} - {{email.value}}</span>
-            <input class="edit" data-if="editing.value" data-model="name.value" data-focus="editing.value">
-            <span class="group">{{group.value}}</span>
-            <button class="edit-btn" data-on-click="$parent.edit($data)">Edit</button>
-            <button class="del" data-on-click="$parent.remove($data)">Delete</button>
-        </li>
+        <li data-component="'contact-row'"
+            data-param-contact="$data"
+            data-param-remove="$parent.remove"></li>
     </ul>
 
     <!-- dm if: empty.value -->
@@ -52,8 +49,34 @@ const MARKUP = `
     <!-- /dm -->
 </div>`;
 
-/** Tutorial.md - app.js. */
+/** Tutorial.md — app.js, the contact-row component. */
+function registerContactRow() {
+    registerComponent('contact-row', {
+        template: `
+            <span class="show" data-if="!editing.value">{{contact.name.value}} &mdash; {{contact.email.value}}</span>
+            <input class="edit" data-if="editing.value"
+                   data-model="contact.name.value" data-focus="editing.value">
+            <span class="group">{{contact.group.value}}</span>
+            <button class="edit-btn" data-on-click="edit">Edit</button>
+            <button class="del" data-on-click="remove">Delete</button>`,
+
+        create({contact, remove}) {
+            const editing = observable(false);
+
+            return {
+                contact,
+                editing,
+                edit() { editing.value = true; },
+                remove() { remove(contact); }
+            };
+        }
+    });
+}
+
+/** Tutorial.md — app.js. */
 function createApp() {
+    registerContactRow();
+
     let nextId = 1;
 
     const make = ({id, name = '', email = '', group = GROUPS[0]} = {}) => {
@@ -62,8 +85,7 @@ function createApp() {
             id: id ?? nextId++,
             name: observable(name),
             email: observable(email),
-            group: observable(group),
-            editing: observable(false)
+            group: observable(group)
         };
     };
 
@@ -113,10 +135,6 @@ function createApp() {
             return false;
         },
 
-        edit(item) {
-            item.editing.value = true;
-        },
-
         remove(item) {
             contacts.remove(item);
         }
@@ -138,6 +156,7 @@ afterEach(() => {
     handle?.dispose();
     handle = null;
     host.remove();
+    unregisterComponent('contact-row');
     localStorage.clear();
 });
 
@@ -196,7 +215,7 @@ describe('Tutorial.md - the contacts app', () => {
         flushSync();
 
         expect(all('#list li')).toHaveLength(1);
-        expect(one('#list li .show').textContent).toBe('Ada - ada@example.com');
+        expect(one('#list li .show').textContent).toBe('Ada — ada@example.com');
         expect(one('#draft-name').value).toBe('');
         expect(one('#summary').textContent.trim()).toBe('1 contact(s), 1 shown');
         expect(one('#none')).toBeNull();
@@ -373,5 +392,83 @@ describe('Tutorial.md - the contacts app', () => {
         expect(JSON.parse(localStorage.getItem('contacts'))[0].name).toBe('Ada Lovelace');
 
         save.dispose();
+    });
+});
+
+describe('Tutorial.md - step 11, the row as a component', () => {
+    /** Two contacts, bound, ready to edit. */
+    function twoRows() {
+        const {vm, make, contacts} = createApp();
+        contacts.push(make({name: 'Ada', email: 'ada@example.com'}));
+        contacts.push(make({name: 'Grace', email: 'grace@example.com'}));
+        handle = applyBindings(vm, one('#app'));
+        flushSync();
+        return {vm, contacts};
+    }
+
+    it('renders one card per contact', () => {
+        twoRows();
+
+        expect(all('#list li')).toHaveLength(2);
+        expect(all('#list .show').map((s) => s.textContent.trim()))
+            .toEqual(['Ada — ada@example.com', 'Grace — grace@example.com']);
+    });
+
+    it('keeps editing private to the row, so one card at a time is an input', () => {
+        twoRows();
+
+        fire(all('#list .edit-btn')[0], 'click');
+        flushSync();
+
+        expect(all('#list .edit')).toHaveLength(1);
+        expect(all('#list .show')).toHaveLength(1);
+        expect(all('#list li')[1].querySelector('.show')).not.toBeNull();
+    });
+
+    it('no longer holds an editing flag on the contact itself', () => {
+        const {contacts} = twoRows();
+
+        expect(contacts.value[0].editing).toBeUndefined();
+        expect(Object.keys(contacts.value[0]).sort())
+            .toEqual(['email', 'group', 'id', 'name']);
+    });
+
+    it('writes an edit back through the observable it was passed', () => {
+        const {contacts} = twoRows();
+
+        fire(all('#list .edit-btn')[0], 'click');
+        flushSync();
+        type(one('#list li .edit'), 'Ada Lovelace');
+        flushSync();
+
+        expect(contacts.value[0].name.value).toBe('Ada Lovelace');
+    });
+
+    it('deletes through the callback the card was given', () => {
+        const {contacts} = twoRows();
+
+        fire(all('#list .del')[0], 'click');
+        flushSync();
+
+        expect(contacts.value.map((c) => c.name.value)).toEqual(['Grace']);
+        expect(all('#list li')).toHaveLength(1);
+    });
+
+    it('leaves the surviving card the same DOM node, mid-edit', () => {
+        const {contacts} = twoRows();
+
+        fire(all('#list .edit-btn')[1], 'click');
+        flushSync();
+        const input = all('#list li')[1].querySelector('.edit');
+        type(input, 'Grace H');
+        flushSync();
+
+        contacts.remove(contacts.value[0]);
+        flushSync();
+
+        const rows = all('#list li');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].querySelector('.edit')).toBe(input);
+        expect(input.value).toBe('Grace H');
     });
 });
