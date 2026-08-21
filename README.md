@@ -34,7 +34,7 @@ first one keeps its actual DOM node, so its focus, its scroll position and its h
 
 **Reusable units of UI.** [`registerComponent('contact-card', {template, create})`](#components) gives a piece of markup
 its own private state and its own teardown. `data-component="'contact-card'"` renders one; point that at an observable
-instead and the component swaps when the value changes.
+instead and the component swaps when the value changes. [Slots](#slots) let the page pass markup in.
 
 **One broken binding never takes the page down.** A binding whose expression will not parse logs a single warning naming
 the expression and the template, and is skipped. Everything else keeps working.
@@ -62,7 +62,8 @@ filter, delete and persist, in about 120 lines. Every listing in it is under tes
   [`data-on-*`](#data-on-event) · [`data-bind-*`](#data-bind-name) · [`data-model`](#data-model) · [`data-if`](#data-if) ·
   [`data-options`](#data-options) · [`data-focus`](#data-focus) ·
   [custom bindings](#custom-bindings) · [binding context](#binding-context)
-- [Keyed lists](#keyed-lists) · [Components](#components) · [`applyBindings`](#applybindingsdata-rootelement) ·
+- [Keyed lists](#keyed-lists) · [Components](#components) · [Slots](#slots) ·
+  [`applyBindings`](#applybindingsdata-rootelement) ·
   [The renderer](#the-renderer) · [Expressions](#expressions)
 - [API reference](#api-reference) · [Coming from Knockout](#coming-from-knockout) ·
   [Things that will catch you](#things-that-will-catch-you) · [Limits and non-goals](#limits-and-non-goals)
@@ -1034,8 +1035,88 @@ never costs you a half-typed input.
 A component renders **inside** its element rather than replacing it, as Knockout's `component:` does. The host keeps its
 own attributes, classes and identity across a swap, and `create(params, {element})` receives it.
 
-Its original children are replaced on mount. Passing markup *into* a component - Knockout's `$componentTemplateNodes` -
-is [not supported yet](#limits-and-non-goals).
+Its original children are not discarded: they are the component's [slot content](#slots).
+
+### Slots
+
+A component can leave holes for the page to fill. `{{#slot}}` in the template marks one; `data-slot` at the usage site
+says which:
+
+```javascript
+registerComponent('card', {
+    template: `
+        <div class="card">
+            <header>{{#slot header}}<h2>Untitled</h2>{{/slot}}</header>
+            <div class="body">{{#slot}}{{/slot}}</div>
+            <footer>{{#slot footer}}<button data-on-click="close">Close</button>{{/slot}}</footer>
+        </div>`
+});
+```
+
+```html
+<div data-component="'card'">
+    <h2 data-slot="header">Ada Lovelace</h2>
+    <p>Mathematician.</p>
+    <button data-slot="footer" data-on-click="save">Save</button>
+</div>
+```
+
+Anything without a `data-slot` goes to the default slot, text included. Several elements may share a name; they arrive in
+document order.
+
+**The block body is the fallback**, used only when nothing is projected. `{{#slot header}}<h2>Untitled</h2>{{/slot}}`
+renders that heading when the page supplies no header, and nothing of it when the page does.
+
+#### Two scopes, one hole
+
+This is the part worth reading twice.
+
+| Markup | Compiled by | Resolves against |
+|--------|-------------|------------------|
+| the fallback, inside `{{#slot}}` | the component's template | the component's **view model** |
+| projected content, inside the host element | the page | the **outer context** |
+
+```html
+<div data-component="'card'">
+    <b data-bind-text="user.name.value"></b>   <!-- the PAGE's user, always -->
+</div>
+```
+
+A component cannot inject values into its slot content, and does not need to: the content was compiled where it was
+written and never leaves that scope. This is Knockout's model. To hand something outward, pass a callback param:
+
+```html
+<div data-component="'list'" data-param-on-select="choose"></div>
+```
+
+Projected content keeps working after it is placed - it is the same DOM, moved. A `data-model` inside a slot writes
+straight back to the page's observable, and a swap to a different component carries the same nodes across rather than
+rebuilding them.
+
+#### Why a block and not an element
+
+Because an element does not survive the HTML parser, and the components that most want slots are the ones that break:
+
+| Written | Parsed as |
+|---------|-----------|
+| `<tr><dm-slot></dm-slot></tr>` | `<dm-slot></dm-slot><table>...` - hoisted out of the table |
+| `<select><dm-slot></dm-slot></select>` | `<select></select>` - deleted |
+| `<tr><!--dm:slot--><!--/dm:slot--></tr>` | survives intact |
+
+A mustache block compiles to comment anchors, which sit anywhere - the same reason `{{#each}}` already works inside a
+`<tbody>`. The usage site still has to be valid HTML of course: to project real `<tr>`s, the host element is the
+`<tbody>`.
+
+`{{#slot}}` registers no binding and evaluates no expression. It is a marker, not a thing that runs.
+
+#### When it goes wrong
+
+| Situation | Behaviour |
+|-----------|-----------|
+| `data-slot="x"` and the component has no slot `x` | warn once naming `x`, that content is left out |
+| content given to a component with no `{{#slot}}` at all | warn once - it would vanish silently otherwise |
+| two slots with the same name in one template | warn once, the first is filled, the rest keep their fallback |
+| a slot left empty | nothing - that is what fallback content is for |
 
 ### Disposal
 
@@ -1416,7 +1497,7 @@ deliberate rather than incidental.
 | `component: {name: current}` | `data-component="current.value"` - swaps when it changes |
 | `params.a` in a view model | identical - and `params` is frozen |
 | `viewModel` / `createViewModel` | `create(params, {element})` - one factory, no `new` |
-| `$componentTemplateNodes` | **not yet** - see [Limits](#limits-and-non-goals) |
+| `$componentTemplateNodes` | `{{#slot}}` in the template, `data-slot` at the usage site |
 | `html: markup` | **none** - `{{{triple-stache}}}`, which says so where you can see it |
 
 The three differences worth knowing before you start:
@@ -1459,18 +1540,14 @@ Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `
 unwrapping, no `eval`-backed expressions, no object literals in a binding, and no minimal-move list reconciliation yet.
 None of these is waiting on anything. The spellings here differ from Knockout's on purpose and will go on differing.
 
-**One thing is a gap rather than a choice**, and the difference matters: a spelling that differs is settled, but a
-capability Knockout has and this does not is a to-do. `$parents[n]` was one, and shipped in 0.6.0 with `$parentContext`;
-[components](#components) were the other, and shipped in 0.7.0. What remains of that list is one piece of components.
+**The Knockout gap list is empty.** `$parents[n]` shipped in 0.6.0 with `$parentContext`, [components](#components) in
+0.7.0, and [slots](#slots) in 0.8.0. Anything Knockout can do, this can do. What remains different is spelling, and that
+is settled rather than pending - the differences above are the price of parsing binding expressions by hand instead of
+compiling them with `Function`, and they are not going to change.
 
-**Slots.** A component cannot yet receive the markup written inside its host element - Knockout's
-`$componentTemplateNodes`, and transclusion generally. Today those children are replaced when the component mounts.
-
-The obstacle is structural rather than a matter of taste. A template is compiled **once**, into a `<template>` element,
-before any render pass exists - that is what makes an instance cheap to clone and what lets bindings be fine-grained.
-Slots need the host's children compiled into a body that is only known at mount time, which is the same wall
-`{{> partial}}` meets inside a keyed block, and it may force a change to how factories are built. It is a to-do, and it
-is the one remaining thing on the parity list.
+The one thing beyond parity that is *not* here is **scoped slots** - a component exposing values its own slot content
+can read, as Vue's `v-slot` does. That one genuinely does meet the compile-once wall: the content would have to be
+compiled against a context that does not exist until mount. Knockout has no equivalent, so nothing is owed here.
 
 ## Development
 

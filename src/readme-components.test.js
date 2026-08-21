@@ -17,6 +17,7 @@ import {registerComponent, unregisterComponent} from './components.js';
 afterEach(() => {
     unregisterComponent('contact-card');
     unregisterComponent('badge');
+    unregisterComponent('card');
 });
 
 function mount(markup, data) {
@@ -127,5 +128,64 @@ describe('the README badge example', () => {
 
         expect(host.querySelector('b').textContent).toBe('active');
         expect(host.querySelector('b').className).toBe('badge');
+    });
+});
+
+describe('the README card example, with slots', () => {
+    function register() {
+        registerComponent('card', {
+            template: `
+                <div class="card">
+                    <header>{{#slot header}}<h2>Untitled</h2>{{/slot}}</header>
+                    <div class="body">{{#slot}}{{/slot}}</div>
+                    <footer>{{#slot footer}}<button data-on-click="close">Close</button>{{/slot}}</footer>
+                </div>`
+        });
+    }
+
+    it('projects header, body and footer', () => {
+        register();
+        const {host} = mount(`
+            <div data-component="'card'">
+                <h2 data-slot="header">Ada Lovelace</h2>
+                <p>Mathematician.</p>
+                <button data-slot="footer" data-on-click="save">Save</button>
+            </div>`, {save() {}});
+
+        expect(host.querySelector('header h2').textContent).toBe('Ada Lovelace');
+        expect(host.querySelector('.body p').textContent).toBe('Mathematician.');
+        expect(host.querySelector('footer button').textContent).toBe('Save');
+    });
+
+    it('falls back to Untitled and Close when nothing is supplied', () => {
+        register();
+        const {host} = mount(`<div data-component="'card'"></div>`, {});
+
+        expect(host.querySelector('header h2').textContent).toBe('Untitled');
+        expect(host.querySelector('footer button').textContent).toBe('Close');
+    });
+
+    it('reads the PAGE user from projected content, not the component', () => {
+        registerComponent('card', {
+            template: '<div class="card">{{#slot}}{{/slot}}</div>',
+            create: () => ({user: {name: observable('component')}})
+        });
+
+        const {host} = mount(
+            `<div data-component="'card'"><b data-bind-text="user.name.value"></b></div>`,
+            {user: {name: observable('page')}}
+        );
+
+        expect(host.querySelector('b').textContent).toBe('page');
+    });
+
+    it('anchors a slot inside a tbody', () => {
+        registerComponent('card', {
+            template: '<table><tbody>{{#slot}}<tr><td>none</td></tr>{{/slot}}</tbody></table>'
+        });
+
+        const {host} = mount(`<div data-component="'card'"></div>`, {});
+
+        expect(host.querySelector('tbody tr td').textContent).toBe('none');
     });
 });
