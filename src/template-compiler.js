@@ -68,6 +68,7 @@ import {
     parseFragment
 } from './nodes.js';
 import {EXPRESSION_HINT, render as defaultRender} from './render.js';
+import {registerComponentHandler} from './components.js';
 import {registerEachHandler} from './reconciler.js';
 import {createRuntime} from './runtime.js';
 
@@ -1216,5 +1217,27 @@ export function compile(rawTemplate, data, contentContainer, renderFn, options =
  * the two hardest files in the package.
  */
 registerEachHandler(eachFactory);
+
+/**
+ * definition → its compiled factory.
+ *
+ * Keyed by the definition object rather than the name, so re-registering a
+ * component under the same name compiles the new template rather than serving
+ * the old one from cache — and so a definition that is unregistered stops being
+ * held alive by this map.
+ */
+const componentFactories = new WeakMap();
+
+/** Compile once per definition, then clone per instance. */
+function factoryForComponent(definition, name, render, options) {
+    let factory = componentFactories.get(definition);
+    if (factory === undefined) {
+        factory = componentFactory(definition.template, `component ${name}`, render, options);
+        componentFactories.set(definition, factory);
+    }
+    return factory;
+}
+
+registerComponentHandler(factoryForComponent);
 
 export const TemplateCompiler = {annotate, compile, scanBlocks, resolvePath};

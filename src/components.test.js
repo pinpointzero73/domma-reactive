@@ -13,6 +13,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {createRootContext} from './context.js';
 import {observable} from './observable.js';
 import {parseFragment} from './nodes.js';
+import {compile} from './template-compiler.js';
+import {flushSync} from './graph.js';
 import {
     collectParams,
     componentDefinition,
@@ -163,5 +165,101 @@ describe('collectParams', () => {
     it('is empty when there are no params at all', () => {
         const node = el(`<div data-component="'probe'"></div>`);
         expect(collectParams(node, binding, createRootContext({}))).toEqual({});
+    });
+});
+
+/** Compile markup against data in a live host, reactively. */
+function mount(markup, data) {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const controller = compile(markup, data, host, undefined, {reactive: true});
+    return {host, controller};
+}
+
+describe('mounting', () => {
+    it('renders a template-only component, with params as $data', () => {
+        registerComponent('probe', {template: '<b data-bind-text="label"></b>'});
+
+        const {host} = mount(`<div data-component="'probe'" data-param-label="who"></div>`, {who: 'Ada'});
+
+        expect(host.querySelector('b').textContent).toBe('Ada');
+    });
+
+    it('renders a component with a view model', () => {
+        registerComponent('probe', {
+            template: '<b data-bind-text="shouted.value"></b>',
+            create: (params) => ({shouted: observable(params.label.toUpperCase())})
+        });
+
+        const {host} = mount(`<div data-component="'probe'" data-param-label="who"></div>`, {who: 'Ada'});
+
+        expect(host.querySelector('b').textContent).toBe('ADA');
+    });
+
+    it('gives the view model the host element as info.element', () => {
+        let seen = null;
+        registerComponent('probe', {
+            template: '<b></b>',
+            create: (params, info) => { seen = info.element; return {}; }
+        });
+
+        const {host} = mount(`<div id="slot" data-component="'probe'"></div>`, {});
+
+        expect(seen).toBe(host.querySelector('#slot'));
+        expect(seen.querySelector('b')).not.toBeNull();   // mounted inside its element
+    });
+
+    it('writes back to the parent through an observable param', () => {
+        const name = observable('Ada');
+        registerComponent('probe', {
+            template: '<b></b>',
+            create: (params) => { params.name.value = 'Grace'; return {}; }
+        });
+
+        mount(`<div data-component="'probe'" data-param-name="who"></div>`, {who: name});
+
+        expect(name.value).toBe('Grace');
+    });
+
+    it('keeps the host element, its attributes and its identity', () => {
+        registerComponent('probe', {template: '<b>x</b>'});
+
+        const {host} = mount(`<div id="slot" class="card" data-component="'probe'"></div>`, {});
+        const slot = host.querySelector('#slot');
+
+        expect(slot.className).toBe('card');
+        expect(slot.querySelector('b').textContent).toBe('x');
+    });
+
+    it('replaces whatever was inside the host element', () => {
+        registerComponent('probe', {template: '<b>new</b>'});
+
+        const {host} = mount(`<div data-component="'probe'"><i>old</i></div>`, {});
+
+        expect(host.querySelector('i')).toBeNull();
+        expect(host.querySelector('b').textContent).toBe('new');
+    });
+
+    it('resolves $component inside a nested each in the component template', () => {
+        registerComponent('probe', {
+            template: '{{#each rows key=id}}<li data-bind-text="$component.title"></li>{{/each}}',
+            create: () => ({title: 'T', rows: [{id: 1}, {id: 2}]})
+        });
+
+        const {host} = mount(`<ul data-component="'probe'"></ul>`, {});
+        flushSync();
+
+        expect([...host.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['T', 'T']);
+    });
+
+    it('reaches the page through $parents from inside a component', () => {
+        registerComponent('probe', {
+            template: '<b data-bind-text="$parents[0].title"></b>',
+            create: () => ({})
+        });
+
+        const {host} = mount(`<div data-component="'probe'"></div>`, {title: 'Page'});
+
+        expect(host.querySelector('b').textContent).toBe('Page');
     });
 });

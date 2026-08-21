@@ -37,6 +37,10 @@
  */
 
 import {compileExpression} from './expression.js';
+import {createComponentContext} from './context.js';
+import {createInstance} from './reconciler.js';
+import {registerBinding} from './handlers.js';
+import {registerDisposer} from './lifecycle.js';
 
 const PREFIX = '[Domma Reactive]';
 
@@ -227,4 +231,178 @@ export function collectParams(element, binding, context) {
     }
 
     return Object.freeze(params);
+}
+
+// ── Mounting ──────────────────────────────────────────────────────────────────
+
+/** host element → what is mounted inside it. */
+const states = new WeakMap();
+
+/**
+ * Build the view model, or fall back to the params when there is no `create`.
+ *
+ * A template-only component reads its params unqualified, which is what makes
+ * the trivial case trivial — and the trivial case is where Knockout's
+ * `viewModel`-or-constructor ambiguity does the most damage.
+ *
+ * Anything that throws in `create` takes that instance and nothing else: one
+ * warning, an empty host, and the rest of the page carries on.
+ *
+ * @returns {*} the view model, or null if `create` threw
+ */
+function buildViewModel(definition, params, element, binding, name) {
+    if (definition.create === undefined) return params;
+
+    try {
+        return definition.create(params, {element});
+    } catch (err) {
+        warnOnce(
+            `component:create:${binding.id}:${name}`,
+            `the component "${name}" threw while being created, in ${binding.expr}: ${err && err.message}`
+        );
+        return null;
+    }
+}
+
+/**
+ * View model first, then the instance.
+ *
+ * That order matters: disposing the instance first would tear down the effects
+ * the view model's own `dispose()` may still be reading through, and the
+ * reference to it is held by the state object either way.
+ *
+ * A `dispose()` that throws is warned about and stepped over, as `disposeNode`
+ * already does — a component that fails to clean up must not prevent every
+ * component after it from cleaning up.
+ */
+function teardown(state) {
+    if (state.instance === null) return;
+
+    const vm = state.viewModel;
+    if (vm !== null && typeof vm === 'object' && typeof vm.dispose === 'function') {
+        try {
+            vm.dispose();
+        } catch (err) {
+            console.warn(`${PREFIX} a component's dispose() threw:`, err);
+        }
+    }
+
+    state.instance.dispose();
+    state.instance = null;
+    state.viewModel = null;
+    state.name = null;
+}
+
+/**
+ * The `data-component` handler.
+ *
+ * ── Why this is not a region binding ─────────────────────────────────────────
+ *
+ * `data-if` is, and the difference is worth stating. The compiler anchors an
+ * attribute region around the WHOLE element (`scanRegionElements` takes
+ * `elementRange`), so a region handler re-renders the element it is written on —
+ * which would put this binding's own `data-param-*` attributes inside the region
+ * it replaces, and there would be no element left to read them from. A region is
+ * `{open, close}` and carries no element reference; see nodes.js.
+ *
+ * So the component owns its element's CONTENTS instead, as `data-options` owns a
+ * `<select>`'s options. The host element persists across a swap, keeping its own
+ * attributes, classes and identity, and Knockout's `component:` renders inside
+ * its element in exactly the same way.
+ *
+ * ── The name is an expression, like every other binding value ────────────────
+ *
+ * Which is why a literal takes inner quotes: `data-component="'contact-card'"`.
+ * That costs one pair of quotes in the common case and buys dynamic components
+ * for nothing — `data-component="currentView.value"` swaps what is rendered when
+ * the observable changes, which is how a great many Knockout applications route.
+ * Making this the one binding whose value was not an expression would have cost
+ * a special case in the compiler and a documented exception to a rule the README
+ * states without one.
+ *
+ * The element's original children are replaced on mount. Stage 1 has no slots;
+ * when `$componentTemplateNodes` arrives, this is the line that changes.
+ *
+ * Takes its factory builder by injection, exactly as the `each` handler does and
+ * for the same reason: this module must not know that a template compiler
+ * exists, or the two would import each other.
+ *
+ * @param {Function} factoryFor (definition, name, render, options) → factory
+ * @returns {Object} a binding handler
+ */
+export function createComponentHandler(factoryFor) {
+    return {
+        tracks: true,
+        primes: true,
+        attribute: 'data-component',
+        expression: true,
+
+        update({binding, nodes, context, render}) {
+            const name = binding.evaluate(context);
+
+            for (const element of nodes) {
+                let state = states.get(element);
+                if (state === undefined) {
+                    state = {name: null, instance: null, viewModel: null};
+                    states.set(element, state);
+                    registerDisposer(element, () => teardown(state));
+                }
+
+                // Same component, already mounted: an unrelated update ran, and
+                // rebuilding would throw away the instance's own state — a
+                // half-typed input, a scroll position, an open panel — for
+                // nothing.
+                if (state.name === name && state.instance !== null) continue;
+
+                teardown(state);
+                element.replaceChildren();
+
+                if (typeof name !== 'string' || name === '') {
+                    warnOnce(
+                        `component:name:${binding.id}`,
+                        `data-component="${binding.expr}" needs a component name — got ` +
+                        `${name === null ? 'null' : typeof name}. Remember that a literal name ` +
+                        `takes quotes, because every binding value is an expression: ` +
+                        `data-component="'my-thing'"`
+                    );
+                    continue;
+                }
+
+                const definition = componentDefinition(name);
+                if (definition === undefined) {
+                    warnOnce(
+                        `component:missing:${binding.id}:${name}`,
+                        `no component is registered as "${name}", in ${binding.expr}`
+                    );
+                    continue;
+                }
+
+                const params = collectParams(element, binding, context);
+                const viewModel = buildViewModel(definition, params, element, binding, name);
+                if (viewModel === null) continue;
+
+                const factory = factoryFor(definition, name, render, binding.options ?? {});
+
+                state.name = name;
+                state.viewModel = viewModel;
+                state.instance = createInstance(factory, context, viewModel, null, null, {
+                    context: createComponentContext(context, viewModel)
+                });
+
+                // createInstance leaves its nodes in a fragment, anchors included.
+                element.append(...state.instance.allNodes());
+            }
+
+            return true;
+        }
+    };
+}
+
+/**
+ * Register the handler under the kind the compiler emits.
+ *
+ * @param {Function} factoryFor
+ */
+export function registerComponentHandler(factoryFor) {
+    registerBinding('component', createComponentHandler(factoryFor));
 }
