@@ -16,7 +16,7 @@
 // for any renderer meeting it.
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {annotate, compile, scanBlocks, TemplateCompiler} from './template-compiler.js';
+import {annotate, compile, componentFactory, scanBlocks, TemplateCompiler} from './template-compiler.js';
 import {render} from './support/mini-render.js';
 import {clearExpressionCache} from './expression.js';
 
@@ -461,5 +461,27 @@ describe('data-each is not a compiler binding', () => {
         annotate('{{#each rows key=id}}<li>{{name}}</li>{{/each}}');
 
         expect(warn).not.toHaveBeenCalled();
+    });
+});
+
+describe('componentFactory', () => {
+    it('compiles a template string into a cloneable factory', () => {
+        const factory = componentFactory('<b data-bind-text="label"></b>', 'component probe', render, {});
+
+        expect(factory.content).toBeInstanceOf(DocumentFragment);
+        expect(factory.bindings.length).toBe(1);
+        expect(factory.bindings[0].kind).toBe('bind');
+        expect(factory.label).toBe('component probe');
+    });
+
+    it('gives each call distinct binding ids, so two components do not collide', () => {
+        const a = componentFactory('<b data-bind-text="x"></b>', 'component a', render, {});
+        const b = componentFactory('<b data-bind-text="x"></b>', 'component b', render, {});
+        expect(a.bindings[0].id).not.toBe(b.bindings[0].id);
+    });
+
+    it('reports usesLength only when the template can read the enclosing size', () => {
+        expect(componentFactory('<b>{{x}}</b>', 'c', render, {}).usesLength).toBe(false);
+        expect(componentFactory('<b>{{$length}}</b>', 'c', render, {}).usesLength).toBe(true);
     });
 });

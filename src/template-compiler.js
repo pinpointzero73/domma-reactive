@@ -27,7 +27,7 @@
  *
  * Every binding declares which root fields it depends on, so the caller can wire
  * one reactive effect per binding. A structural change re-renders only the block
- * that changed - never the whole component.
+ * that changed — never the whole component.
  *
  * The full binding set is known statically from the template, including bindings
  * nested inside blocks that are not currently rendered. Those simply hold no DOM
@@ -36,7 +36,7 @@
  *
  * ── Two kinds of {{#each}} ───────────────────────────────────────────────────
  *
- * A KEYED block - `{{#each rows key=id}}` - is removed from the annotated
+ * A KEYED block — `{{#each rows key=id}}` — is removed from the annotated
  * template entirely. Its body is compiled separately into a cloneable
  * `<template>` (see `buildFactory`), and the reconciler clones one instance per
  * item, each with its own binding context and its own effects. Everything works
@@ -45,7 +45,7 @@
  *
  * An UNKEYED block, and `{{#with}}`, evaluate their bodies against a different
  * data object with no per-item identity to hang anything on, so bindings inside
- * them are deliberately NOT bound independently - they are refreshed when the
+ * them are deliberately NOT bound independently — they are refreshed when the
  * enclosing block re-renders, exactly as they were before M4. Binding them to
  * root fields would resolve the wrong values. Behaviour bindings inside such a
  * block warn rather than failing silently, because a click handler that is
@@ -81,7 +81,7 @@ const BLOCK_TOKEN = /\{\{([#/])(if|unless|each|with)(?:\s+([^}]+?))?\s*\}\}/g;
 /** Triple-stache raw output: {{{html}}} */
 const TRIPLE = /\{\{\{\s*([^{}]+?)\s*\}\}\}/g;
 
-/** Simple interpolation: {{name}} - not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
+/** Simple interpolation: {{name}} — not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
 const INTERP = /\{\{(?!\{)\s*([^#/>!{}][^{}]*?)\s*\}\}/g;
 
 /** Partial reference: {{> name}} */
@@ -92,7 +92,7 @@ const PARTIAL = /\{\{>\s*[^{}]+?\s*\}\}/;
  *
  * `data-each` is an applyBindings spelling, implemented directly there. The
  * compiler discovers lists from `{{#each}}` only, so the attribute is inert in
- * anything this module annotates - including a keyed block body, which is where
+ * anything this module annotates — including a keyed block body, which is where
  * it bites: an author nests one list inside another, the inner attribute is left
  * exactly as written, and the bindings inside it quietly resolve against the
  * OUTER item. Nothing was wrong enough to say anything about, which is the
@@ -116,7 +116,7 @@ const SIMPLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/;
  * because ONE pass is what makes the order safe: scanning left to right, the
  * `&amp;` in `&amp;lt;` is consumed and the scan resumes after it, so the
  * remaining `lt;` is plain text and the result is the literal `&lt;`. Decoding
- * in two passes - entities, then `&amp;` - would turn it into `<`, which is the
+ * in two passes — entities, then `&amp;` — would turn it into `<`, which is the
  * classic double-decode and a real bug in a template compiler.
  */
 const ENTITY = /&(?:lt|gt|quot|apos|nbsp|amp|#39|#x27);/g;
@@ -136,7 +136,7 @@ const ENTITY_TEXT = {
  *
  * It is not a corner case reached only by typing an entity on purpose.
  * Serialising DOM back to HTML escapes every `&` it writes, and `el.innerHTML`
- * is exactly how applyBindings captures a `data-each` body - so an ordinary
+ * is exactly how applyBindings captures a `data-each` body — so an ordinary
  * `data-bind-class="done && 'struck'"`, the documented idiom, came back out as
  * `&amp;&amp;` and failed to parse, with no entity anywhere in the author's page.
  *
@@ -165,7 +165,7 @@ const RENDERER_FORM = /^[@.]/;
  *
  * Inside an UNKEYED `{{#each}}` these are substituted by the renderer, which
  * builds a per-item data object containing `@index`, `@first`, `@last` and `.`.
- * A keyed block has no render pass over its items - that is the point of it -
+ * A keyed block has no render pass over its items — that is the point of it —
  * so the same four forms have to come from the context instead. Without this,
  * `{{@index}}` would work in a block and silently vanish the moment its author
  * added `key=`, which is precisely the trap a new feature must not set.
@@ -206,7 +206,7 @@ const OPENING = 1;
  * interleaving.
  *
  * `skip` DELETES that many characters after the insertion point, which is how a
- * keyed `{{#each}}` removes itself from the annotated template - its body is
+ * keyed `{{#each}}` removes itself from the annotated template — its body is
  * compiled separately into a cloneable <template>, and leaving the mustache
  * source behind would have the renderer paint a second, unmanaged copy of the
  * list before the reconciler ever ran. Edits falling inside a deleted range are
@@ -415,7 +415,7 @@ function shiftingRanges(annotated, regions) {
  * rather than an error, so every template written before M4 keeps working
  * exactly as it did.
  *
- * The key must be a path - a property of the item. Not an expression: a key is
+ * The key must be a path — a property of the item. Not an expression: a key is
  * an identity, it is read once per item per reconcile, and letting it be
  * `a + b` would invite keys that change when the item's *contents* change, which
  * is the one thing a key must never do.
@@ -466,7 +466,7 @@ function bodyRange(source, block) {
  * This is the piece design spec §6 calls "the significant architectural shift".
  * A block body used to be re-rendered to a string per item; now it is parsed
  * ONCE into a `<template>` and cloned, which is what makes a per-item binding
- * possible at all - a binding needs a node, and a string has none.
+ * possible at all — a binding needs a node, and a string has none.
  *
  * Two things come out:
  *
@@ -475,7 +475,7 @@ function bodyRange(source, block) {
  *                    would paint it once, unbound, before the handler ran.
  *   `{{ }}` tokens   removed. There is no render pass over an instance, so a
  *                    token left in place would sit in the DOM as literal text
- *                    until - and only if - something happened to update it.
+ *                    until — and only if — something happened to update it.
  *                    Every one of them has a binding that fills it on
  *                    instantiation, which is why the skeleton can be blank.
  *
@@ -500,7 +500,7 @@ function toSkeleton(annotated, bindings) {
     let out = '';
     let cursor = 0;
     for (const [start, end] of ranges) {
-        // Nested inside a region already emptied - it went with its parent.
+        // Nested inside a region already emptied — it went with its parent.
         if (start < cursor) continue;
         out += annotated.slice(cursor, start);
         cursor = end;
@@ -515,7 +515,7 @@ function toSkeleton(annotated, bindings) {
  *
  * Built lazily, on the block's first update, for one reason: `annotate()` is
  * string-only and documented as DOM-free, and a `<template>` element is not.
- * Deferring keeps that promise - a consumer can annotate a template in Node and
+ * Deferring keeps that promise — a consumer can annotate a template in Node and
  * only pays for a `document` when something actually renders.
  *
  * @param {Object} binding  the `each` binding, carrying the raw body
@@ -527,7 +527,7 @@ function toSkeleton(annotated, bindings) {
  * Everything about an item that changes when it MOVES rather than when it
  * changes.
  *
- * An instance whose index shifted - because something was inserted above it -
+ * An instance whose index shifted — because something was inserted above it —
  * needs the bindings that render its position re-run, and nothing else. Without
  * this distinction a prepend re-runs every binding of every item below it, and
  * a `data-model` input in the list writes its stored value back over whatever
@@ -543,22 +543,28 @@ function sourceOf(binding) {
 
 let factorySeq = 0;
 
-function buildFactory(binding, render, options) {
-    const label = `${options.template ? `${options.template} ` : ''}{{#each ${binding.expr}}}`;
-    const {annotated, bindings} = annotate(binding.body, {
+/**
+ * Compile template source into a factory the reconciler can clone from.
+ *
+ * Shared by `{{#each}}` block bodies and by component templates, which differ
+ * only in where the source came from, what the label says, and which id prefix
+ * keeps their binding records apart. A second copy of this would drift the
+ * moment either grew a compiler option.
+ *
+ * @param {string} source
+ * @param {string} label
+ * @param {Function} render
+ * @param {Object} options
+ * @param {string} idPrefix
+ * @returns {Object} factory
+ */
+function factoryFrom(source, label, render, options, idPrefix) {
+    const {annotated, bindings} = annotate(source, {
         ...options,
         itemForms: true,
         template: label,
-        idPrefix: `i${++factorySeq}:`
+        idPrefix
     });
-
-    if (PARTIAL.test(binding.body)) {
-        console.warn(
-            `${PREFIX} {{> partial}} inside a keyed {{#each}} is not expanded - ` +
-            `the block body is compiled once into a <template>, before any render ` +
-            `pass exists to resolve a partial against. Inline it, in ${label}`
-        );
-    }
 
     for (const b of bindings) b.positional = POSITIONAL.test(sourceOf(b));
 
@@ -569,15 +575,49 @@ function buildFactory(binding, render, options) {
         label,
         options,
         /*
-         * Whether an item's rendering can depend on how many items there are.
-         * A push changes `$length` for every existing item, so without this
-         * every instance in the list would be refreshed on every append - the
+         * Whether an instance's rendering can depend on how many siblings there
+         * are. A push changes `$length` for every existing item, so without this
+         * every instance in the list would be refreshed on every append — the
          * exact O(n) the reconciler exists to avoid. A source scan rather than
          * an AST walk because `@last` is a renderer form that never reaches the
          * parser, so there is no one AST to interrogate.
+         *
+         * Narrower than `positional` on purpose: `@index` moves an item without
+         * the list's size changing, and conflating the two would put the O(n)
+         * straight back.
          */
-        usesLength: /@last|\$length/.test(binding.body)
+        usesLength: /@last|\$length/.test(source)
     };
+}
+
+function buildFactory(binding, render, options) {
+    const label = `${options.template ? `${options.template} ` : ''}{{#each ${binding.expr}}}`;
+
+    if (PARTIAL.test(binding.body)) {
+        console.warn(
+            `${PREFIX} {{> partial}} inside a keyed {{#each}} is not expanded — ` +
+            `the block body is compiled once into a <template>, before any render ` +
+            `pass exists to resolve a partial against. Inline it, in ${label}`
+        );
+    }
+
+    return factoryFrom(binding.body, label, render, options, `i${++factorySeq}:`);
+}
+
+/**
+ * A component's template, compiled once and cloned per instance.
+ *
+ * Same machinery as a keyed block body, and for the same reason — an instance
+ * owns its effects, so it needs its own copy of the binding records.
+ *
+ * @param {string} source
+ * @param {string} label
+ * @param {Function} render
+ * @param {Object} options
+ * @returns {Object} factory
+ */
+export function componentFactory(source, label, render, options) {
+    return factoryFrom(source, label, render, options, `c${++factorySeq}:`);
 }
 
 /**
@@ -605,7 +645,7 @@ function warnUnkeyed(expr, options) {
     const where = options.template ? ` in template "${options.template}"` : '';
     console.warn(
         `${PREFIX} {{#each ${expr}}}${where} has no key=, so it re-renders the whole ` +
-        `block on every change - losing DOM node identity, focus and uncommitted ` +
+        `block on every change — losing DOM node identity, focus and uncommitted ` +
         `input. Write {{#each ${expr} key=id}}, naming whichever property identifies ` +
         `an item, to reconcile instead.`
     );
@@ -648,14 +688,14 @@ export function eachFactory(binding, render) {
  * Prepare the expression half of a binding: its AST, its evaluator, its deps.
  *
  * Returns null when the source does not parse, which is the caller's signal to
- * skip the binding entirely - design spec §7 says a parse failure warns and
+ * skip the binding entirely — design spec §7 says a parse failure warns and
  * skips, never throws, and a binding that cannot be evaluated is worse than no
  * binding because it would write `undefined` over working markup.
  */
 function prepareExpression(source, handler, options) {
     // `methodCalls` comes from the HANDLER, not the template, so a page cannot
     // opt itself into calling methods from an interpolation. Only the event
-    // binding declares it - see the note on eventHandler in handlers.js.
+    // binding declares it — see the note on eventHandler in handlers.js.
     const parseOptions = {...options, methodCalls: handler.methodCalls === true};
 
     const ast = parseExpression(source, parseOptions);
@@ -686,7 +726,7 @@ export function annotate(rawTemplate, options = {}) {
      * Ids are namespaced per compiled template, and a keyed block body is a
      * compiled template of its own. Without this, an instance's `0_blk` and the
      * enclosing template's `0_blk` are the same string, and the enclosing
-     * runtime - which walks every node beneath it, instance content included -
+     * runtime — which walks every node beneath it, instance content included —
      * would happily hand an item's nodes to a binding belonging to the page.
      * Empty by default, so the markup Domma renders is unchanged.
      */
@@ -708,7 +748,7 @@ export function annotate(rawTemplate, options = {}) {
         warn(
             'inert-each',
             `data-each="${expr}" does nothing here. It is an applyBindings spelling, and this ` +
-            `is compiled markup - write {{#each ${expr}}} … {{/each}} instead. A data-each ` +
+            `is compiled markup — write {{#each ${expr}}} … {{/each}} instead. A data-each ` +
             'nested inside another list is compiled markup too, which is the usual way to meet this'
         );
     }
@@ -717,7 +757,7 @@ export function annotate(rawTemplate, options = {}) {
     //
     // A region is a mustache block or an element carrying a region attribute
     // (data-if). They are anchored together so that a data-if inside an {{#if}},
-    // or the reverse, nests correctly - insertAll sorts by position, so the two
+    // or the reverse, nests correctly — insertAll sorts by position, so the two
     // kinds interleave properly without either knowing about the other.
     //
     // Block ids keep their historical `${i}_blk` numbering, so the markup Domma
@@ -728,7 +768,7 @@ export function annotate(rawTemplate, options = {}) {
     // A keyed {{#each}} owns its body outright: the body is compiled separately
     // into a cloneable <template>, and everything inside it belongs to the
     // instance rather than to this template. So the block is REMOVED from the
-    // annotated source, and every region that fell inside it is dropped here -
+    // annotated source, and every region that fell inside it is dropped here —
     // annotating markup that is about to be deleted would leave orphan anchors
     // and bindings that could never acquire a node.
     const keyedRanges = [];
@@ -737,14 +777,14 @@ export function annotate(rawTemplate, options = {}) {
     /*
      * A keyed block inside an UNKEYED {{#each}} or a {{#with}} cannot reconcile.
      * Its collection expression would be evaluated against the top-level data,
-     * where the name means nothing, and the list would render EMPTY - the worst
+     * where the name means nothing, and the list would render EMPTY — the worst
      * of the three possible outcomes, because the page looks finished. So it is
      * demoted to an ordinary block: the `key=` is stripped from its opening
      * token, the enclosing block re-renders it as a string like every other
      * nested block, and it says why.
      *
      * A keyed block inside a KEYED one is a different matter entirely and is
-     * fully supported - it is compiled as part of the outer block's item body,
+     * fully supported — it is compiled as part of the outer block's item body,
      * which is why those are filtered out here rather than demoted.
      */
     const shifting = blocks
@@ -822,7 +862,7 @@ export function annotate(rawTemplate, options = {}) {
     const nextId = (kind) => `${prefix}${counter++}_${ID_SUFFIX[kind] ?? kind}`;
 
     // Register a binding per region. `body` is filled in at the very end, once
-    // every pass has inserted its anchors - a region that re-renders must
+    // every pass has inserted its anchors — a region that re-renders must
     // reproduce the text, attribute and nested-region anchors inside it.
     for (const region of regions) {
         if (annotated.indexOf(ANCHOR_OPEN(region.id)) === -1) continue;
@@ -846,8 +886,8 @@ export function annotate(rawTemplate, options = {}) {
                 /*
                  * A shared box rather than a plain field. A list instance
                  * shallow-copies every binding record it owns, so a factory
-                 * cached on the record itself would be rebuilt - parsed,
-                 * annotated, skeletonised - once per instance of an enclosing
+                 * cached on the record itself would be rebuilt — parsed,
+                 * annotated, skeletonised — once per instance of an enclosing
                  * list. The box survives the copy; the compiled template is
                  * built once per template, as §6 requires.
                  */
@@ -925,7 +965,7 @@ export function annotate(rawTemplate, options = {}) {
     for (const m of [...annotated.matchAll(INTERP)]) {
         if (inRanges(m.index, shifted)) continue;
         if (inRanges(m.index, rawRanges)) continue;
-        // Interpolations inside a tag are attribute bindings - see pass 4
+        // Interpolations inside a tag are attribute bindings — see pass 4
         if (isInsideTag(annotated, m.index)) continue;
 
         const expr = m[1].trim();
@@ -968,7 +1008,7 @@ export function annotate(rawTemplate, options = {}) {
                 if (shiftedTag) {
                     warn(
                         `shifted:${name}`,
-                        `"${name}" inside an {{#each}} or {{#with}} block is not bound - ` +
+                        `"${name}" inside an {{#each}} or {{#with}} block is not bound — ` +
                         'per-item bindings arrive with the reconciler. Move it outside the ' +
                         'block, or wire it up imperatively for now'
                     );
@@ -1053,7 +1093,7 @@ export function annotate(rawTemplate, options = {}) {
  *
  * Three outcomes:
  *
- *   a dotted path      a text binding resolved by walking keys - the only form
+ *   a dotted path      a text binding resolved by walking keys — the only form
  *                      supported before M3, and still the fast path
  *   an expression      a text binding evaluated by the parser, and primed after
  *                      the first paint because the renderer may not have
@@ -1076,7 +1116,7 @@ function textBinding(expr, options, warn) {
     if (SIMPLE_PATH.test(expr)) {
         // A path through a context name is not a path through $data. Walking
         // keys from `$data` for `{{$root.title}}` looks for a field called
-        // "$root" on the item and finds nothing - the evaluator is the only
+        // "$root" on the item and finds nothing — the evaluator is the only
         // thing that knows $root, $parent, $index and $length are not data.
         if (expr.startsWith('$')) {
             const prepared = prepareExpression(expr, bindingHandler('text'), options);
@@ -1139,7 +1179,7 @@ function textBinding(expr, options, warn) {
  *                                     effects per binding would be one too many.
  *                                     A standalone consumer almost certainly
  *                                     wants it on. Note that list *instances*
- *                                     always own their effects either way -
+ *                                     always own their effects either way —
  *                                     see runtime.js.
  * @returns {Object} BindingController
  */
@@ -1172,7 +1212,7 @@ export function compile(rawTemplate, data, contentContainer, renderFn, options =
  * Registered here, not in reconciler.js, so the dependency runs one way: this
  * module knows how to compile a block body into a cloneable factory, and hands
  * that capability to a reconciler that knows nothing about templates. The
- * alternative - reconciler.js importing `annotate` - would be a cycle between
+ * alternative — reconciler.js importing `annotate` — would be a cycle between
  * the two hardest files in the package.
  */
 registerEachHandler(eachFactory);
