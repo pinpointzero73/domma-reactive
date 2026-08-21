@@ -1,11 +1,13 @@
-name: Bump domma-js and domma-cms when domma-reactive changes
+name: Bump domma-js and domma-cms when domma-reactive releases
 
+# Fires when a release is tagged. The earlier trigger was any push touching
+# package.json or src/**, which meant a routine commit opened version-bump PRs in
+# two downstream repositories - and, while CROSS_REPO_PAT was unset, a failed run
+# on every such push.
 on:
   push:
-    branches: [ "main" ]
-    paths:
-      - 'package.json'
-      - 'src/**'
+    tags: [ 'v*' ]
+  workflow_dispatch:
 
 env:
   TARGET_OWNER: pinpointzero73
@@ -24,6 +26,13 @@ jobs:
           - repo: domma-cms
             label: domma-cms
     steps:
+      - name: Resolve source label
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*) echo "SRC_LABEL=${GITHUB_REF_NAME}" >> "$GITHUB_ENV" ;;
+            *)           echo "SRC_LABEL=${GITHUB_SHA::7}"   >> "$GITHUB_ENV" ;;
+          esac
+
       - name: Configure git
         run: |
           git config --global user.name "github-actions[bot]"
@@ -35,14 +44,14 @@ jobs:
         run: |
           git clone "https://x-access-token:${TOKEN}@github.com/${TARGET_OWNER}/${{ matrix.repo }}.git" target
           cd target
-          git checkout -b "bump/reactive-${GITHUB_SHA::7}"
+          git checkout -b "bump/reactive-${SRC_LABEL}"
 
       - name: Bump ${{ matrix.label }} version (patch)
         run: |
           cd target
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));const parts=(p.version||'0.0.0').split('.').map(n=>parseInt(n||0));parts[2]=(parts[2]||0)+1;p.version=parts.join('.');fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('new version',p.version)"
           git add package.json
-          git commit -m "chore: bump ${{ matrix.label }} version after domma-reactive update" || echo "no changes to commit"
+          git commit -m "chore: bump ${{ matrix.label }} version for domma-reactive ${SRC_LABEL}" || echo "no changes to commit"
           git push --set-upstream origin HEAD
 
       - name: Create PR for ${{ matrix.label }}
@@ -51,8 +60,8 @@ jobs:
         run: |
           cd target
           BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          TITLE="chore: bump ${{ matrix.label }} for domma-reactive updates"
-          BODY="Automated version bump from domma-reactive updates. Source: ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          TITLE="chore: bump ${{ matrix.label }} for domma-reactive ${SRC_LABEL}"
+          BODY="Automated version bump for the domma-reactive ${SRC_LABEL} release. Source: ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
           jq -n --arg head "$BRANCH" --arg title "$TITLE" --arg body "$BODY" \
             '{head:$head, base:"main", title:$title, body:$body}' > /tmp/pr.json
           curl -sS -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" \
