@@ -189,8 +189,13 @@ As everywhere else: one warning naming the slot and the template, and nothing el
 | Two `{{#slot x}}` blocks with the same name in one template | warn once, the first wins, the second keeps its fallback |
 | `{{#slot}}` used more than once (two default slots) | warn once, the first wins |
 | A component with slot content but no `{{#slot}}` at all | warn once - the content would vanish silently otherwise |
-| `{{#slot}}` with no closing `{{/slot}}` | the existing unclosed-block warning, unchanged |
+| `{{#slot}}` with no closing `{{/slot}}` | the tokens survive into the output as literal text |
 | Slot content on a component that fails to build | host left empty, content stays in the holding fragment, released on teardown |
+
+An unclosed `{{#slot}}` is **not** slot-specific and is not fixed here: `scanBlocks` drops any
+unmatched opening token, so an unclosed `{{#if}}` behaves identically today and has since the
+compiler was written. Worth a warning; worth it as its own change, covering every block kind, rather
+than smuggled in beside a feature.
 
 Unmatched content keeps its bindings alive while detached, until the host is disposed. That is a
 bounded cost on a path that has already warned, and the alternative - disposing effects the component
