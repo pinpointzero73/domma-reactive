@@ -1,0 +1,40 @@
+#!/bin/sh
+#
+# Strip AI attribution trailers before the commit is written.
+#
+# Darryl is the sole author of shipped code in this repository. Assistant-generated
+# `Co-Authored-By: Claude …` trailers have been added 325 times by tooling that did not
+# have that preference loaded, and every one of them had to be caught by eye. The
+# `Claude-Session:` link the same tooling appends is stripped for the same reason - it
+# also survived the first version of this hook, which matched Co-Authored-By alone.
+#
+# This strips them mechanically instead. Genuine human co-authors are left alone - only
+# trailers naming Claude/Anthropic (or a noreply@anthropic.com address) are removed.
+#
+# Shared via `core.hooksPath`, so it must be enabled once per clone:
+#     git config core.hooksPath .githooks
+#
+# Verify with:  git log -1 --format=%B
+
+set -e
+
+MSG_FILE="$1"
+[ -f "$MSG_FILE" ] || exit 0
+
+# Case-insensitive match, restricted to the AI identities so that a genuine human
+# co-author is never touched.
+TRAILERS='^[[:space:]]*(Co-Authored-By:[[:space:]]*.*(claude|anthropic)|Claude-Session:[[:space:]]*https?://)'
+
+if grep -qiE "$TRAILERS" "$MSG_FILE"; then
+    TMP="$MSG_FILE.tmp.$$"
+    grep -viE "$TRAILERS" "$MSG_FILE" > "$TMP"
+
+    # Removing a trailer leaves a dangling blank line at the end of the body; collapse
+    # any run of trailing blank lines back to none so the message ends cleanly.
+    awk 'BEGIN{n=0} {lines[NR]=$0} END{last=NR; while (last>0 && lines[last] ~ /^[[:space:]]*$/) last--; for(i=1;i<=last;i++) print lines[i]}' "$TMP" > "$MSG_FILE"
+    rm -f "$TMP"
+
+    echo "commit-msg: stripped AI attribution trailer(s)" >&2
+fi
+
+exit 0
