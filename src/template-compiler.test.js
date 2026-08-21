@@ -19,6 +19,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {annotate, compile, componentFactory, scanBlocks, TemplateCompiler} from './template-compiler.js';
 import {render} from './support/mini-render.js';
 import {clearExpressionCache} from './expression.js';
+import {parseFragment} from './nodes.js';
 
 describe('template-compiler - annotation', () => {
 
@@ -509,5 +510,42 @@ describe('data-param-* with no data-component', () => {
         annotate('<div data-param-a="x"></div><div data-param-b="y"></div>');
 
         expect(warn).toHaveBeenCalledOnce();
+    });
+});
+
+describe('{{#slot}}', () => {
+    it('compiles to a pair of anchors with the body between them', () => {
+        const {annotated} = annotate('<div>{{#slot}}fallback{{/slot}}</div>');
+
+        expect(annotated).toMatch(/<!--dm:\w+-->fallback<!--\/dm:\w+-->/);
+        expect(annotated).not.toContain('{{#slot');
+        expect(annotated).not.toContain('{{/slot}}');
+    });
+
+    it('registers no binding, because a slot has no expression to evaluate', () => {
+        const {bindings} = annotate('<div>{{#slot}}fallback{{/slot}}</div>');
+        expect(bindings).toHaveLength(0);
+    });
+
+    it('reports its slots, named and default', () => {
+        const {slots} = annotate('<div>{{#slot header}}h{{/slot}}{{#slot}}d{{/slot}}</div>');
+
+        expect(slots.map((s) => s.name)).toEqual(['header', '']);
+        expect(slots[0].id).not.toBe(slots[1].id);
+    });
+
+    it('survives inside a tbody, which an element spelling cannot', () => {
+        const {annotated} = annotate('<table><tbody>{{#slot}}{{/slot}}</tbody></table>');
+        const host = document.createElement('div');
+        host.appendChild(parseFragment(annotated));
+
+        expect(host.querySelector('tbody')).not.toBeNull();
+        expect(host.querySelector('tbody').childNodes.length).toBeGreaterThan(0);
+    });
+
+    it('leaves other block kinds alone', () => {
+        const {bindings} = annotate('<div>{{#if x}}y{{/if}}</div>');
+        expect(bindings).toHaveLength(1);
+        expect(bindings[0].blockKind).toBe('if');
     });
 });

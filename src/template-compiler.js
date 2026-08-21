@@ -77,7 +77,7 @@ const PREFIX = '[Domma Reactive]';
 // ── Token patterns ────────────────────────────────────────────────────────────
 
 /** Opening or closing block token: {{#each items}} / {{/each}} */
-const BLOCK_TOKEN = /\{\{([#/])(if|unless|each|with)(?:\s+([^}]+?))?\s*\}\}/g;
+const BLOCK_TOKEN = /\{\{([#/])(if|unless|each|with|slot)(?:\s+([^}]+?))?\s*\}\}/g;
 
 /** Triple-stache raw output: {{{html}}} */
 const TRIPLE = /\{\{\{\s*([^{}]+?)\s*\}\}\}/g;
@@ -451,10 +451,10 @@ function parseKeyed(expr) {
  * @returns {[number, number]} [bodyStart, bodyEnd] absolute in `source`
  */
 function bodyRange(source, block) {
-    const open = /^\{\{#(?:if|unless|each|with)(?:\s+[^}]*?)?\s*\}\}/.exec(
+    const open = /^\{\{#(?:if|unless|each|with|slot)(?:\s+[^}]*?)?\s*\}\}/.exec(
         source.slice(block.start, block.end)
     );
-    const close = /\{\{\/(?:if|unless|each|with)\s*\}\}$/.exec(
+    const close = /\{\{\/(?:if|unless|each|with|slot)\s*\}\}$/.exec(
         source.slice(block.start, block.end)
     );
     if (open === null || close === null) return [block.start, block.end];
@@ -721,6 +721,7 @@ function prepareExpression(source, handler, options) {
  */
 export function annotate(rawTemplate, options = {}) {
     const bindings = [];
+    const slots = [];
     const warnedHere = new Set();
 
     /*
@@ -853,6 +854,37 @@ export function annotate(rawTemplate, options = {}) {
             region.expr = parseKeyed(region.expr)?.collection ?? region.expr;
         }
 
+        /*
+         * A slot is a hole, not a binding. The anchors mark where projected
+         * content goes; the body between them is the fallback, which is
+         * ordinary compiled markup belonging to this template. The tokens
+         * themselves are dropped so the renderer never meets a block kind it
+         * does not know.
+         *
+         * No binding is registered: there is no expression to evaluate and
+         * nothing to re-run. components.js finds these anchors by id, from
+         * `factory.slots`, and fills them.
+         */
+        if (region.mustache && region.kind === 'slot') {
+            const [bodyStart, bodyEnd] = bodyRange(rawTemplate, region);
+
+            regionEdits.push({
+                index: region.start,
+                text: ANCHOR_OPEN(region.id),
+                order: OPENING,
+                skip: bodyStart - region.start
+            });
+            regionEdits.push({
+                index: bodyEnd,
+                text: ANCHOR_CLOSE(region.id),
+                order: CLOSING,
+                skip: region.end - bodyEnd
+            });
+
+            slots.push({id: region.id, name: region.expr});
+            continue;
+        }
+
         const keyed = region.mustache
             && region.kind === 'each'
             && !demoted.has(region.start)
@@ -886,6 +918,7 @@ export function annotate(rawTemplate, options = {}) {
     // every pass has inserted its anchors - a region that re-renders must
     // reproduce the text, attribute and nested-region anchors inside it.
     for (const region of regions) {
+        if (region.kind === 'slot') continue;
         if (annotated.indexOf(ANCHOR_OPEN(region.id)) === -1) continue;
 
         if (region.keyed) {
@@ -1106,7 +1139,7 @@ export function annotate(rawTemplate, options = {}) {
         b.body = annotated.slice(start + openTag.length, end);
     }
 
-    return {annotated, bindings};
+    return {annotated, bindings, slots};
 }
 
 /**
