@@ -588,7 +588,27 @@ function factoryFrom(source, label, render, options, idPrefix) {
          * the list's size changing, and conflating the two would put the O(n)
          * straight back.
          */
-        usesLength: /@last|\$length/.test(source)
+        usesLength: /@last|\$length/.test(source),
+
+        /*
+         * Whether an instance can see its ancestors as anything more than
+         * `$parent` and `$root`. The gate in `refresh` compares the parent
+         * context by its `$data` and `$root`, because the parent context is a
+         * fresh object on every update and comparing it by identity would make
+         * every reconcile a full refresh.
+         *
+         * That covers everything an instance could observe until 0.6.0.
+         * `$parentContext` and `$parents[n]` broke the assumption: the outer
+         * list's `$index` and a grandparent's data both live on the parent
+         * context and neither shows up in `$data` or `$root`, so reordering the
+         * OUTER list moved the nodes and left `$parentContext.$index` reading
+         * the position the item used to have.
+         *
+         * Same trade as `usesLength`, for the same reason: a body that names
+         * one of them opts into an identity comparison on the parent context;
+         * a body that does not pays nothing, which is nearly all of them.
+         */
+        usesAncestors: /\$parentContext|\$parents/.test(source)
     };
 }
 

@@ -176,11 +176,16 @@ export function createInstance(factory, parentContext, item, index, length, opti
              * caller passing the same data twice still produces two of them -
              * so comparing it by identity would make every reconcile a full
              * refresh and undo the paragraph below. What an instance can
-             * actually observe of its parent is `$parent` and `$root`.
+             * actually observe of its parent is `$parent` and `$root` - unless
+             * its body names `$parentContext` or `$parents`, which reach the
+             * parent CONTEXT rather than its data. `factory.usesAncestors` says
+             * so, and buys the identity comparison back only for those bodies.
              */
             const replaced =
                 nextParent.$data !== instance.parentContext.$data ||
                 nextParent.$root !== instance.parentContext.$root ||
+                (factory.usesAncestors === true &&
+                    nextParent !== instance.parentContext) ||
                 nextItem !== instance.item;
             const moved =
                 nextIndex !== instance.index ||

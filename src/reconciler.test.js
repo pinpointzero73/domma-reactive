@@ -1097,6 +1097,50 @@ describe('ancestor names through a real nested render', () => {
     it('renders empty past the end rather than throwing', () => {
         expect(() => nested('<b data-bind-text="$parents[99].name"></b>')).not.toThrow();
     });
+
+    /**
+     * The three tests above assert the FIRST render, which is where this went
+     * wrong for four versions.
+     *
+     * `refresh` decides whether an instance needs a new context by comparing
+     * the parent context's `$data` and `$root` - never the context itself,
+     * because it is a fresh object on every update and comparing identity
+     * would refresh everything, always. Reordering the OUTER list changes
+     * neither of those for an inner item: same group object, same root, same
+     * member, same inner index. So the nodes moved and `$parentContext.$index`
+     * went on reporting the position the group used to be in.
+     *
+     * `$parents[0].name` is asserted alongside precisely because it is
+     * ancestor DATA and was always correct - it is the evidence that the list
+     * really did reorder, which is what makes a stale index stale rather than
+     * a list that never moved.
+     */
+    it('follows the outer list when it reorders', () => {
+        const data = {
+            title: 'Contacts',
+            groups: [
+                {id: 1, name: 'Family', members: [{id: 11, name: 'Ada'}]},
+                {id: 2, name: 'Work', members: [{id: 21, name: 'Grace'}]}
+            ]
+        };
+
+        const controller = compile(
+            '{{#each groups key=id}}<div>{{#each members key=id}}' +
+            '<i data-bind-text="$parentContext.$index"></i>' +
+            '<b data-bind-text="$parents[0].name"></b>' +
+            '{{/each}}</div>{{/each}}',
+            data, host
+        );
+
+        expect(texts('i')).toEqual(['0', '1']);
+        expect(texts('b')).toEqual(['Family', 'Work']);
+
+        data.groups = [...data.groups].reverse();
+        controller.updateAll(data);
+
+        expect(texts('b')).toEqual(['Work', 'Family']);
+        expect(texts('i')).toEqual(['0', '1']);
+    });
 });
 
 describe('createInstance with a caller-supplied context', () => {
