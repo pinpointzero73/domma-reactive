@@ -14,10 +14,10 @@
 
 ## Read first
 
-- `docs/superpowers/specs/2026-08-18-parents-and-parent-context-design.md` — the agreed design. Where this plan disagrees with it, the spec wins.
-- `src/context.js` — the whole file. It is 140 lines and its header explains every decision this touches. **It has no imports and must keep it that way.**
-- `src/expression.js:675` — `resolveIdentifier`, three lines, the entire resolution mechanism.
-- `src/handlers.js:199-220` — `resolveWriteTarget`, which Task 4 changes.
+- `docs/superpowers/specs/2026-08-18-parents-and-parent-context-design.md` - the agreed design. Where this plan disagrees with it, the spec wins.
+- `src/context.js` - the whole file. It is 140 lines and its header explains every decision this touches. **It has no imports and must keep it that way.**
+- `src/expression.js:675` - `resolveIdentifier`, three lines, the entire resolution mechanism.
+- `src/handlers.js:199-220` - `resolveWriteTarget`, which Task 4 changes.
 
 ## File structure
 
@@ -84,7 +84,7 @@ describe('$parentContext', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/context.test.js`
-Expected: FAIL — `$parentContext` is `undefined`.
+Expected: FAIL - `$parentContext` is `undefined`.
 
 - [ ] **Step 3: Implement**
 
@@ -98,12 +98,12 @@ export const CONTEXT_KEYS = new Set([
 
 Add `$parentContext: null` to the object `createRootContext` returns, and `$parentContext: base` to the object `createChildContext` returns.
 
-Update the module header. The paragraph beginning "The cost is that there is no `$parents[2]`" is now wrong — replace it with a note that the chain is reachable through `$parentContext`, and that `$parent` remains data on purpose.
+Update the module header. The paragraph beginning "The cost is that there is no `$parents[2]`" is now wrong - replace it with a note that the chain is reachable through `$parentContext`, and that `$parent` remains data on purpose.
 
 - [ ] **Step 4: Run the whole suite**
 
 Run: `npm run test:run`
-Expected: PASS. If a test asserts a context's exact shape it will fail on the new key — update it; the addition is intended.
+Expected: PASS. If a test asserts a context's exact shape it will fail on the new key - update it; the addition is intended.
 
 - [ ] **Step 5: Commit**
 
@@ -111,9 +111,9 @@ Expected: PASS. If a test asserts a context's exact shape it will fail on the ne
 git add src/context.js src/context.test.js
 git commit -m "feat: add \$parentContext to the binding context
 
-The enclosing context, or null at the root. \$parent stays data — making it a
+The enclosing context, or null at the root. \$parent stays data - making it a
 context would force \$parent.\$data.name everywhere, which is why it is data in
-the first place — so positional information one level up needed its own name.
+the first place - so positional information one level up needed its own name.
 Knockout reached the same conclusion."
 ```
 
@@ -180,7 +180,7 @@ describe('$parents', () => {
         expect(Object.isFrozen(createRootContext({}).$parents)).toBe(true);
     });
 
-    it('is memoised — the same context returns the same array', () => {
+    it('is memoised - the same context returns the same array', () => {
         const child = createChildContext(createRootContext({}), {});
         expect(child.$parents).toBe(child.$parents);
     });
@@ -192,7 +192,7 @@ describe('$parents', () => {
         expect(a.$parents).not.toBe(b.$parents);
     });
 
-    it('is lazy — a getter, not an eager field', () => {
+    it('is lazy - a getter, not an eager field', () => {
         const child = createChildContext(createRootContext({}), {});
         const descriptor = Object.getOwnPropertyDescriptor(child, '$parents');
         expect(typeof descriptor.get).toBe('function');
@@ -208,7 +208,7 @@ describe('$parents', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/context.test.js`
-Expected: FAIL — `$parents` is `undefined`.
+Expected: FAIL - `$parents` is `undefined`.
 
 - [ ] **Step 3: Implement**
 
@@ -219,7 +219,7 @@ Add `'$parents'` to `CONTEXT_KEYS`. Then, above `createRootContext`:
  * The root's `$parents`, which is always empty.
  *
  * Shared across every root context, which is safe precisely because it is both
- * empty and frozen — there is nothing to tell two of them apart, and nothing
+ * empty and frozen - there is nothing to tell two of them apart, and nothing
  * that could write to one.
  */
 const NO_PARENTS = Object.freeze([]);
@@ -232,7 +232,7 @@ const NO_PARENTS = Object.freeze([]);
  * are not: `$parents` is a name for the awkward case, and a keyed list creates a
  * context per item per render whether or not any template mentions it.
  *
- * Frozen for the reason contexts are frozen — it is a statement about where an
+ * Frozen for the reason contexts are frozen - it is a statement about where an
  * expression sits, not scratch space. `resolveWriteTarget` refuses to write
  * through anything frozen, so `$parents[0] = x` warns rather than throwing.
  *
@@ -290,7 +290,7 @@ git commit -m "feat: add \$parents to the binding context
 
 Ancestor data, nearest first, matching Knockout. A memoised getter over the
 \$parentContext chain rather than an array accumulated on the way down, so a
-context that is never asked for its ancestry never builds one — and a keyed
+context that is never asked for its ancestry never builds one - and a keyed
 list creates a context per item per render whether or not any template mentions
 the name.
 
@@ -351,7 +351,7 @@ describe('ancestor context names', () => {
 - [ ] **Step 2: Run**
 
 Run: `npx vitest run src/expression.test.js`
-Expected: PASS with no implementation change. If `expressionDependencies` returns a name, check that both were added to `CONTEXT_KEYS` in Tasks 1 and 2 — that set is what excludes them.
+Expected: PASS with no implementation change. If `expressionDependencies` returns a name, check that both were added to `CONTEXT_KEYS` in Tasks 1 and 2 - that set is what excludes them.
 
 - [ ] **Step 3: Commit**
 
@@ -410,7 +410,7 @@ Import `resolveWriteTarget` from `./handlers.js`, `parseExpression` from `./expr
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/handlers.test.js`
-Expected: FAIL — the frozen cases return a target rather than `null`.
+Expected: FAIL - the frozen cases return a target rather than `null`.
 
 - [ ] **Step 3: Implement**
 
@@ -426,7 +426,7 @@ Add a note above the function explaining why:
  * ── Frozen targets are not settable paths ────────────────────────────────────
  *
  * These are strict-mode modules, so `object[key] = value` on a frozen object
- * throws a TypeError — and a binding that throws takes the page with it, which
+ * throws a TypeError - and a binding that throws takes the page with it, which
  * is the one thing this layer promises never to do. A frozen target is refused
  * here instead, so the caller warns and skips exactly as it does for any other
  * unsettable path.
@@ -449,7 +449,7 @@ git commit -m "fix: refuse a frozen write target instead of throwing
 
 resolveWriteTarget hands back {object, key} and the callers assign to it
 unguarded. These are strict-mode modules, so a frozen target threw a TypeError
-— and a binding that throws takes the page with it, which is the one thing this
+- and a binding that throws takes the page with it, which is the one thing this
 layer promises never to do.
 
 Reachable before this change with data-model on a frozen view model. \$parents
@@ -507,7 +507,7 @@ it('reaches ancestor data and ancestor position from a nested keyed list', () =>
 - [ ] **Step 2: Run**
 
 Run: `npx vitest run src/reconciler.test.js`
-Expected: PASS. If `$parentContext.$index` renders empty, the inner list's context was built from the group *data* rather than the group *context* — check what `reconcile` passes as `parentContext`.
+Expected: PASS. If `$parentContext.$index` renders empty, the inner list's context was built from the group *data* rather than the group *context* - check what `reconcile` passes as `parentContext`.
 
 - [ ] **Step 3: Run the whole suite and commit**
 
@@ -525,16 +525,16 @@ git commit -m "test: ancestor names through a real nested keyed render"
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-08-18-component-params-design.md`
 
-- [ ] **Step 1: README — the binding context section**
+- [ ] **Step 1: README - the binding context section**
 
 Document both names where `$data` `$root` `$parent` `$index` are described: what each is, that `$parents` is nearest-first, that `$parents[0]` is `$parent` below the root, and that `$parentContext` is how you reach an enclosing list's `$index`. Include the nested-list example from the spec.
 
-- [ ] **Step 2: README — everything that called this missing**
+- [ ] **Step 2: README - everything that called this missing**
 
-- `### Known limits` — delete "There is no `$parents[2]` yet: `$parent` reaches one level up, and no further — see Limits and non-goals."
-- The migration table — `$parents[2]` becomes **identical**; add a `$parentContext` row, also identical.
-- `## Limits and non-goals` — `$parents[n]` comes out of the two-gaps paragraph, leaving components as the only entry. Reword the lead-in, which currently says "Two things are gaps rather than choices".
-- The `Things that will catch you` table — add a row: writing to `$parents[0]` or a context warns and does nothing, because both are frozen; write to ancestor *data* instead.
+- `### Known limits` - delete "There is no `$parents[2]` yet: `$parent` reaches one level up, and no further - see Limits and non-goals."
+- The migration table - `$parents[2]` becomes **identical**; add a `$parentContext` row, also identical.
+- `## Limits and non-goals` - `$parents[n]` comes out of the two-gaps paragraph, leaving components as the only entry. Reword the lead-in, which currently says "Two things are gaps rather than choices".
+- The `Things that will catch you` table - add a row: writing to `$parents[0]` or a context warns and does nothing, because both are frozen; write to ancestor *data* instead.
 
 - [ ] **Step 3: Amend the components spec so the two cannot drift**
 
@@ -588,7 +588,7 @@ Expected: `0.5.2 → 0.6.0  (package.json, package-lock.json)`. It deliberately 
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md
-git commit -m "Release 0.6.0 — \$parents[n] and \$parentContext"
+git commit -m "Release 0.6.0 - \$parents[n] and \$parentContext"
 ```
 
 - [ ] **Step 4: Preflight**
@@ -597,7 +597,7 @@ git commit -m "Release 0.6.0 — \$parents[n] and \$parentContext"
 make preflight
 ```
 
-Expected: `preflight: clean, not behind origin, 0.6.0 unpublished, artefacts verified` and `all 31 exports verified`. Thirty-one is correct — these are context names, not exports.
+Expected: `preflight: clean, not behind origin, 0.6.0 unpublished, artefacts verified` and `all 31 exports verified`. Thirty-one is correct - these are context names, not exports.
 
 - [ ] **Step 5: Re-measure the bundle**
 
@@ -606,9 +606,9 @@ gzip -c dist/domma-reactive.min.js | wc -c
 stat -c%s dist/domma-reactive.min.js dist/domma-reactive.esm.js
 ```
 
-Compare against the README's opening line (`18 KB gzipped`) and its install table (54 KB / 54 KB / 280 KB). This change is tiny, but nothing in the build asserts these figures — which is exactly how they drifted 20% stale between 0.5.0 and 0.5.2. If a rounded number moved, amend the release commit and re-run `preflight`.
+Compare against the README's opening line (`18 KB gzipped`) and its install table (54 KB / 54 KB / 280 KB). This change is tiny, but nothing in the build asserts these figures - which is exactly how they drifted 20% stale between 0.5.0 and 0.5.2. If a rounded number moved, amend the release commit and re-run `preflight`.
 
-- [ ] **Step 6: Publish, then tag — but ask first**
+- [ ] **Step 6: Publish, then tag - but ask first**
 
 ```bash
 make release-npm    # publishes to npm; irreversible

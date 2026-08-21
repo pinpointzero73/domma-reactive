@@ -1,5 +1,5 @@
 /**
- * Observables — the state primitive.
+ * Observables - the state primitive.
  *
  * The dependency graph in graph.js tracks *reads*, but something has to own
  * the value being read. In Domma that role is played by Model; standalone,
@@ -30,8 +30,8 @@ const PREFIX = '[Domma Reactive]';
  * subscription could have been sugar over one. It is not, for two reasons.
  *
  *   1. A subscription is about ONE observable. An effect is about whatever its
- *      body happened to read, which is a different — and, for a caller porting
- *      from Knockout, a surprising — contract.
+ *      body happened to read, which is a different - and, for a caller porting
+ *      from Knockout, a surprising - contract.
  *   2. An effect is a `Computation` in the graph. A page that subscribes to a
  *      hundred observables would add a hundred nodes to the dependency graph
  *      that no computed ever reads, and would show up in exactly the live-
@@ -47,7 +47,7 @@ const PREFIX = '[Domma Reactive]';
  * assertion about the callback needs no `flushSync()`, which is the behaviour
  * anyone writing `count.subscribe(...)` expects.
  *
- * The graph is unaffected — `dep.trigger()` still batches computeds and effects
+ * The graph is unaffected - `dep.trigger()` still batches computeds and effects
  * onto the microtask flush. The two mechanisms are deliberately different, and
  * the difference is the point: subscriptions are notifications about a write,
  * effects are recomputations of a graph.
@@ -82,8 +82,8 @@ function subscribers() {
         },
 
         /**
-         * Iterated over a copy, so a subscriber that unsubscribes itself — or
-         * subscribes something else — cannot corrupt the walk. A subscriber
+         * Iterated over a copy, so a subscriber that unsubscribes itself - or
+         * subscribes something else - cannot corrupt the walk. A subscriber
          * that throws is reported and skipped: one bad callback must not turn a
          * write into an exception at an unrelated call site.
          */
@@ -163,7 +163,7 @@ function notifyPath(options, deliver) {
  * The `equals` comparator gates *notification*, not the write. A write always
  * lands; the graph only hears about it when the comparator reports a change.
  * That is precisely Domma's Model._setField, which assigns unconditionally and
- * then notifies `if (!utils.isEqual(oldValue, value))` — so a comparator that
+ * then notifies `if (!utils.isEqual(oldValue, value))` - so a comparator that
  * deliberately ignores part of the payload (compare by id, say) can never leave
  * readers serving stale data.
  *
@@ -206,7 +206,7 @@ export function observable(initial, options = {}) {
 
     // `peek` and `set` are closures rather than methods: they carry no `this`,
     // so they survive being destructured off the observable or handed straight
-    // to a callback — both routine for a published API.
+    // to a callback - both routine for a published API.
     const api = {
         get value() {
             dep.track();
@@ -231,7 +231,7 @@ export function observable(initial, options = {}) {
         subscribe: (fn) => subs.add(fn),
 
         /**
-         * Layer behaviour onto this observable — see extenders.js.
+         * Layer behaviour onto this observable - see extenders.js.
          * @param {Object} spec e.g. {rateLimit: 300} or {notify: 'always'}
          * @returns {Object} this observable, so calls chain
          */
@@ -255,7 +255,7 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  *
  * `.value` is the underlying array and is tracked on read. The in-place
  * mutators notify after running, so a `push` is a single notification rather
- * than a wholesale replacement — which the keyed reconciler turns into a single
+ * than a wholesale replacement - which the keyed reconciler turns into a single
  * DOM insertion, leaving every existing row's nodes and effects untouched.
  *
  * Two write paths, two rules, deliberately:
@@ -264,7 +264,7 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  *     gate, because an in-place mutation leaves the array the same reference
  *     as itself: `isEqual(current, current)` is true no matter what `push` did.
  *     Comparing would mean holding a copy and diffing it, which costs O(n) per
- *     mutation and throws away the one thing worth knowing — that this was a
+ *     mutation and throws away the one thing worth knowing - that this was a
  *     push, of that item, at that index. `dep.trigger()` below is where M4
  *     attaches that patch information.
  *
@@ -272,7 +272,7 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  *     replacing the array with a deeply equal one stays quiet.
  *
  * The accepted cost of the first rule is a spurious notification from a
- * mutator that changed nothing — a no-op `sort()`, `splice(0, 0)`. That errs
+ * mutator that changed nothing - a no-op `sort()`, `splice(0, 0)`. That errs
  * towards notifying too often, never too rarely, which is the safe direction.
  *
  * The initial array, and any array assigned wholesale, is **copied** rather
@@ -280,14 +280,14 @@ const MUTATORS = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
  * the original would change what `.value` returns without ever reaching the
  * graph, so the data and the DOM would disagree silently and permanently, with
  * no `notify()` to recover by. The copy costs O(n) once per assignment and
- * does not touch the property that matters — the mutators work in place on the
+ * does not touch the property that matters - the mutators work in place on the
  * array held here, and nothing about them cares what it was copied from.
  *
  * That `observable()` adopts by reference and this does not is the point, not
  * an inconsistency: `observable()` is safe by reference precisely because it
  * offers no in-place path, and offering one is exactly what turns adoption
  * into aliasing. A caller who genuinely wants the live array takes it from
- * `peek()` — that is the deliberate escape hatch.
+ * `peek()` - that is the deliberate escape hatch.
  *
  * @param {Array}  [initial=[]] Non-arrays are coerced to an empty array.
  * @param {Object} [options]    Same options as observable(); `equals` gates
@@ -352,7 +352,7 @@ export function observableArray(initial = [], options = {}) {
         set: (next) => write(next),
 
         /**
-         * Remove items in place — every occurrence of a value, or everything a
+         * Remove items in place - every occurrence of a value, or everything a
          * test function accepts.
          *
          * ── Why a function is a test and not a value ─────────────────────────
@@ -361,7 +361,7 @@ export function observableArray(initial = [], options = {}) {
          * `$parent.remove($data)` hands over the very object the row was
          * rendered from. But `remove(t => t.id === 2)` is the spelling most
          * people reach for first, and treating it as a value made it fail in
-         * the worst available way — the function was compared against each item
+         * the worst available way - the function was compared against each item
          * by identity, never matched, and removed nothing without a word.
          *
          * The case this gives up is an array of bare functions removing one of
@@ -376,7 +376,7 @@ export function observableArray(initial = [], options = {}) {
          * before it.
          *
          * Notifies even when nothing matched. `remove`/`removeAll` follow the
-         * mutator rule, not the assignment rule — gating them on "did anything
+         * mutator rule, not the assignment rule - gating them on "did anything
          * actually go?" would add a third write rule to save a single
          * microtask, and "removed nothing" is a coherent patch for the M4
          * reconciler to be handed. Worth stating here because these two are
@@ -407,8 +407,8 @@ export function observableArray(initial = [], options = {}) {
         },
 
         /**
-         * Where an item sits, by identity. Tracked, because the alternative —
-         * `peek().indexOf(x)` — is the same answer with the dependency silently
+         * Where an item sits, by identity. Tracked, because the alternative -
+         * `peek().indexOf(x)` - is the same answer with the dependency silently
          * dropped, which is the trap `.length` is tracked to avoid.
          *
          * @param {*} item
@@ -450,7 +450,7 @@ export function observableArray(initial = [], options = {}) {
          * showing it.
          *
          * It is supported here because a Knockout view model ported across would
-         * otherwise keep rendering rows the user believes they deleted — a
+         * otherwise keep rendering rows the user believes they deleted - a
          * silent, data-losing difference. `{{#each}}` and `data-each` skip
          * marked items (see render.js), so the two halves agree.
          *
@@ -497,7 +497,7 @@ export function observableArray(initial = [], options = {}) {
         destroyAll: () => api.destroy(() => true),
 
         /**
-         * Call `fn(array)` on every change — every mutator, and every wholesale
+         * Call `fn(array)` on every change - every mutator, and every wholesale
          * assignment that the comparator judged a real change. See the note
          * above `subscribers()`.
          *
@@ -513,7 +513,7 @@ export function observableArray(initial = [], options = {}) {
         subscribe: (fn) => subs.add(fn),
 
         /**
-         * Layer behaviour onto this array — see extenders.js. A rate limit
+         * Layer behaviour onto this array - see extenders.js. A rate limit
          * applies to the mutators as well as to wholesale assignment, which is
          * the point: a loop of pushes announces once.
          *

@@ -6,8 +6,8 @@
  *   PARITY     A template written for Domma's `utils.render` must render the
  *              same here, because `compile()` now uses this by default and a
  *              consumer moving between the two must not be surprised.
- *   DIVERGENCE Where this one is deliberately better — same-kind block nesting,
- *              full expressions in `{{ }}` — the difference is asserted rather
+ *   DIVERGENCE Where this one is deliberately better - same-kind block nesting,
+ *              full expressions in `{{ }}` - the difference is asserted rather
  *              than left to a README claim nobody checks.
  *
  * The parity expectations below are the output of Domma's actual `utils.render`
@@ -120,7 +120,7 @@ describe('nesting', () => {
             .toBe('12');
     });
 
-    it('nests blocks of the SAME kind — the divergence from Domma', () => {
+    it('nests blocks of the SAME kind - the divergence from Domma', () => {
         // Domma's utils.render matches `{{#each …}}([\s\S]*?){{/each}}`
         // non-greedily, so the outer loop's body stops at the INNER {{/each}}
         // and the template falls apart. Counting depth is what fixes it.
@@ -139,14 +139,14 @@ describe('nesting', () => {
         expect(render(template, {a: false, b: true})).toBe('none');
     });
 
-    it('renders {{.}} as the item — Domma renders the item CONTEXT', () => {
+    it('renders {{.}} as the item - Domma renders the item CONTEXT', () => {
         // Verified against utils.render at v0.33.1: for a list of primitives it
         // produces "[object Object][object Object][object Object]", because its
         // getValue treats `.` as the whole data object and the item context it
         // builds for a primitive is `{'.': item, '@index': …}`. This renderer
         // reaches into `'.'`, which is what every mustache implementation does.
         //
-        // A divergence, and an improvement — but it IS a divergence, so a
+        // A divergence, and an improvement - but it IS a divergence, so a
         // template relying on Domma's output would see different text here.
         expect(render('{{#each xs}}{{.}}{{/each}}', {xs: [1, 2, 3]})).toBe('123');
         expect(render('{{#if a}}{{#each xs}}{{.}}{{/each}}{{/if}}', {a: 1, xs: [7]})).toBe('7');
@@ -160,7 +160,7 @@ describe('nesting', () => {
     });
 });
 
-describe('expressions in {{ }} — the other divergence', () => {
+describe('expressions in {{ }} - the other divergence', () => {
     it('evaluates a ternary, a comparison and a helper call', () => {
         registerHelper('upper', (s) => String(s).toUpperCase());
 
@@ -237,7 +237,7 @@ describe('parity with Domma utils.render', () => {
     it('does NOT support Domma\'s space-separated helper form, and says nothing', () => {
         // `{{upper name}}` is a helper call to Domma's renderer, and neither a
         // key nor a parseable expression here. It renders as nothing, which is
-        // what utils.render itself produces when the helper is not registered —
+        // what utils.render itself produces when the helper is not registered -
         // and it does so WITHOUT a warning, because warning about a template
         // that works elsewhere would be noise. Use `upper(name)` instead.
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -256,7 +256,7 @@ describe('parity with Domma utils.render', () => {
 // `observableArray.destroy(item)` leaves the item in the collection carrying
 // `_destroy: true`, so a form can still submit it to a server that deletes on
 // that flag. A renderer that showed it anyway would put rows on screen the user
-// believes they have deleted, so both render paths skip it — here, and in the
+// believes they have deleted, so both render paths skip it - here, and in the
 // keyed reconciler.
 
 describe('render - destroyed items', () => {

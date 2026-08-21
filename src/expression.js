@@ -1,19 +1,19 @@
 /**
- * Expression evaluator — tokeniser, Pratt parser, AST walker, helper registry.
+ * Expression evaluator - tokeniser, Pratt parser, AST walker, helper registry.
  *
  * Bindings need more than a dotted path. `data-bind-class="isActive && 'on'"`,
  * `{{ count > 0 ? 'some' : 'none' }}` and `upper(user.name)` are all ordinary
  * things to want from a template, and none of them is a path.
  *
- * The obvious implementation — hand the source to the Function constructor
- * wrapped in a `with` block — is the one this module exists to avoid. Under
+ * The obvious implementation - hand the source to the Function constructor
+ * wrapped in a `with` block - is the one this module exists to avoid. Under
  * `script-src 'self'` without `unsafe-eval` that constructor throws, which is
  * why Knockout bindings die under a strict CSP. Parsing the subset ourselves
  * costs a few hundred lines and buys deployability under a policy that forbids
  * dynamic code, plus the ability to say precisely what an expression may do.
  *
  * This file contains no dynamic code construction of any kind, and a test
- * asserts that of the source text itself — see expression.test.js. The same
+ * asserts that of the source text itself - see expression.test.js. The same
  * assertion runs against the built bundles in scripts/verify-dist.mjs, because
  * a bundler could in principle introduce one.
  *
@@ -69,8 +69,8 @@ const PREFIX = '[Domma Reactive]';
  * walker, is caught too), and while evaluating (so a hand-built AST handed to
  * evaluateAst() cannot overflow either).
  *
- * 64 is far beyond anything a template needs — a five-branch ternary chain is
- * five levels — and far below the depth at which any JavaScript engine's stack
+ * 64 is far beyond anything a template needs - a five-branch ternary chain is
+ * five levels - and far below the depth at which any JavaScript engine's stack
  * is in danger. Note the consequence for chains: `1+1+1+…` builds one level per
  * operand, so 64 is also the ceiling on operands in a single flat chain. An
  * expression that hits that is not an expression, it is a spreadsheet.
@@ -82,7 +82,7 @@ export const MAX_DEPTH = 64;
  *
  * The cache is a module global keyed by source text. That is exactly right for
  * templates, which are finite and authored, and exactly wrong for expressions
- * built at runtime from user input, which are not — and would grow the map
+ * built at runtime from user input, which are not - and would grow the map
  * forever. Clearing everything at the limit is the cheapest policy that bounds
  * it; the cost is re-parsing a working set once, which is microseconds.
  */
@@ -97,7 +97,7 @@ const CACHE_LIMIT = 1000;
  * them is the first move in every prototype-pollution chain, and no legitimate
  * template expression needs any of them.
  *
- * Exported — though deliberately NOT re-exported from index.js — because the
+ * Exported - though deliberately NOT re-exported from index.js - because the
  * binding layer must refuse to *write* them too, and `data-model="x.__proto__"`
  * is prototype pollution with the arrow pointing the other way. One list, one
  * place to audit; two lists would drift and the write side would be the one
@@ -110,7 +110,7 @@ export const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
  * expression. They are rejected by name rather than by falling out of the
  * grammar so the message can say what is actually wrong.
  *
- * Applied in prefix position only — `item.in` and `x.new` are perfectly good
+ * Applied in prefix position only - `item.in` and `x.new` are perfectly good
  * property names and must keep working.
  */
 const REJECTED_WORDS = new Map([
@@ -122,7 +122,7 @@ const REJECTED_WORDS = new Map([
     ['in', 'the `in` operator is not supported'],
     ['function', 'function expressions are not supported'],
     ['class', 'class expressions are not supported'],
-    ['this', '`this` is not supported — use $data'],
+    ['this', '`this` is not supported - use $data'],
     ['await', '`await` is not supported'],
     ['yield', '`yield` is not supported']
 ]);
@@ -141,7 +141,7 @@ const helpers = new Map();
  * TWO caches, because the same text parses differently depending on whether the
  * caller allows method calls: `a.b()` is a MethodCall for an event binding and a
  * parse failure for an interpolation. Keyed by text alone, whichever call
- * arrived first would decide for the other — an interpolation elsewhere on the
+ * arrived first would decide for the other - an interpolation elsewhere on the
  * page could silently break an event handler, or worse, let a method call into
  * an expression that is supposed to refuse one.
  */
@@ -153,7 +153,7 @@ const methodCallCache = new Map();
  *
  * A WeakMap rather than a `source` field on the node, because the AST shape is
  * a contract the binding layer walks and a field that exists only on the root
- * is a trap in a recursive walker. Weak, so it never outlives the AST — which
+ * is a trap in a recursive walker. Weak, so it never outlives the AST - which
  * a cleared cache discards. A hand-built AST is simply absent from it, and the
  * warning says so rather than inventing a name.
  */
@@ -170,7 +170,7 @@ const DIGIT = /[0-9]/;
  * Unicode identifiers, via the Unicode property escapes rather than a
  * hand-rolled [A-Za-z_$] class: `café`, `naïve` and `имя` are legitimate
  * property names, and a template that reads one should not be a parse error.
- * `$` is not in ID_Start or ID_Continue, so it is added explicitly — the
+ * `$` is not in ID_Start or ID_Continue, so it is added explicitly - the
  * context variables ($data, $index …) depend on it.
  */
 const IDENT_START = /[\p{ID_Start}$_]/u;
@@ -188,8 +188,8 @@ const PUNCTUATORS = [
  * Tokenising them is what turns "unexpected character" into advice.
  */
 const REJECTED_PUNCTUATORS = new Map([
-    ['==', 'loose equality is not supported — use ==='],
-    ['!=', 'loose inequality is not supported — use !=='],
+    ['==', 'loose equality is not supported - use ==='],
+    ['!=', 'loose inequality is not supported - use !=='],
     ['=', 'assignment is not supported'],
     ['??', 'the ?? operator is not supported']
 ]);
@@ -217,7 +217,7 @@ function tokenise(source) {
             continue;
         }
 
-        // Number: 1, 1.5, 1e3, 1.5e-3. No hex, no leading dot, no separators —
+        // Number: 1, 1.5, 1e3, 1.5e-3. No hex, no leading dot, no separators -
         // a template that needs 0xFF needs a computed.
         if (DIGIT.test(char)) {
             const start = i;
@@ -363,7 +363,7 @@ const POSTFIX_BP = 10;
 /** Prefix operators. */
 const UNARY = new Set(['-', '+', '!']);
 
-/** Every node is frozen on creation — the cache shares them between callers. */
+/** Every node is frozen on creation - the cache shares them between callers. */
 const node = (props) => Object.freeze(props);
 
 /**
@@ -498,7 +498,7 @@ function parseSource(source, allowMethodCalls = false) {
         }
 
         // A call. Ordinarily the callee must be a bare name, which is then
-        // looked up in the helper registry and nowhere else — see evaluateCall.
+        // looked up in the helper registry and nowhere else - see evaluateCall.
         // Rejecting `x.foo()` HERE rather than at evaluation is deliberate: it
         // is a grammatical fact, not a data-dependent one, so the author gets
         // told at compile time instead of on whichever render first reaches it.
@@ -509,7 +509,7 @@ function parseSource(source, allowMethodCalls = false) {
         expect('(');
         const method = allowMethodCalls && left.type === 'Member';
         if (left.type !== 'Identifier' && !method) {
-            fail('only registered helpers can be called — `x.foo()` is not supported');
+            fail('only registered helpers can be called - `x.foo()` is not supported');
         }
 
         const args = [];
@@ -559,7 +559,7 @@ function describe(token) {
  *
  * The parser's own recursion counter cannot see this: `1+1+1+…` is one loop
  * iteration per term with no recursion at all, yet produces a left-nested tree
- * as deep as it is long — which the evaluator, which IS recursive, would then
+ * as deep as it is long - which the evaluator, which IS recursive, would then
  * walk. Measuring the tree after the fact catches both shapes with one number,
  * and does so without recursing itself.
  */
@@ -613,20 +613,20 @@ function childrenOf(current) {
  *
  * Exported within the package because the event binding must resolve a method
  * off its receiver, and doing that anywhere else would mean a second read path
- * with a second copy of the prototype guard — which is exactly how a guard ends
+ * with a second copy of the prototype guard - which is exactly how a guard ends
  * up applied in one place and forgotten in the other.
  *
  * ── Why the prototype guard lives here, and not in the parser ────────────────
  *
  * Because a parse-time guard cannot be complete. `a.__proto__` and
  * `a['__proto__']` are visible in the source text, but `a[key]` where `key`
- * holds the string `'__proto__'` is not — the dangerous key does not exist
+ * holds the string `'__proto__'` is not - the dangerous key does not exist
  * until the moment of access. A guard that catches two forms out of three is
  * worse than one that catches all three, because it reads as though it works.
  *
  * One chokepoint also means one thing to audit and one thing to test. Every
- * property read in the evaluator — dotted, bracketed, computed, and bare
- * identifiers resolved against $data — arrives here.
+ * property read in the evaluator - dotted, bracketed, computed, and bare
+ * identifiers resolved against $data - arrives here.
  *
  * The blocked read yields `undefined` rather than throwing, so a hostile
  * expression degrades to a blank rather than taking the render down with it.
@@ -648,7 +648,7 @@ export function readMember(object, key) {
     const name = String(key);
     if (BLOCKED_KEYS.has(name)) {
         console.warn(
-            `${PREFIX} blocked an expression from reading "${name}" — ` +
+            `${PREFIX} blocked an expression from reading "${name}" - ` +
             '__proto__, constructor and prototype are not readable from an expression'
         );
         return undefined;
@@ -661,7 +661,7 @@ export function readMember(object, key) {
  * Resolve a bare name.
  *
  * The four context variables come from the context. Everything else is a
- * property of `$data` — there is no scope-chain walk up through `$parent`.
+ * property of `$data` - there is no scope-chain walk up through `$parent`.
  * Knockout does not walk either, and for the same reason: a name that silently
  * resolves one level up is a name whose meaning depends on data you are not
  * looking at. `$parent.name` says what it means.
@@ -684,7 +684,7 @@ function evaluateCall(name, args) {
         if (!warnedHelpers.has(name)) {
             warnedHelpers.add(name);
             console.warn(
-                `${PREFIX} no helper named "${name}" is registered — ` +
+                `${PREFIX} no helper named "${name}" is registered - ` +
                 'expressions can only call helpers registered with registerHelper()'
             );
         }
@@ -779,7 +779,7 @@ function evaluateNode(current, context, depth) {
         // and say so rather than quietly yield undefined.
         case 'MethodCall':
             throw new ExpressionError(
-                'an expression cannot call a method — `x.foo()` is available to ' +
+                'an expression cannot call a method - `x.foo()` is available to ' +
                 'data-on-* handlers only, because a call during a render is a side effect'
             );
 
@@ -796,7 +796,7 @@ function evaluateNode(current, context, depth) {
  * A failure is cached too, as `null`. That is what makes the warning fire once
  * per broken expression rather than once per render: the second call is a cache
  * hit and says nothing. It also means the `template` label in the warning
- * belongs to whichever template reached the expression first — an acceptable
+ * belongs to whichever template reached the expression first - an acceptable
  * asymmetry, since the source text in the message is what identifies the fault.
  *
  * @param {string} source
@@ -837,8 +837,8 @@ export function parseExpression(source, options = {}) {
 /**
  * Evaluate a parsed AST against a context.
  *
- * Never throws. An error anywhere in the walk — a helper that blew up, a
- * malformed hand-built node, a depth overrun — is reported and yields
+ * Never throws. An error anywhere in the walk - a helper that blew up, a
+ * malformed hand-built node, a depth overrun - is reported and yields
  * `undefined`, because the alternative is one bad binding destroying a render.
  *
  * @param {Object|null} ast     from parseExpression()
@@ -873,7 +873,7 @@ export function evaluateAst(ast, context) {
  * about cache behaviour.
  *
  * Returns `null` when the source does not parse, rather than a function that
- * always yields undefined, because §7 says a failed binding is *skipped* — and
+ * always yields undefined, because §7 says a failed binding is *skipped* - and
  * a caller cannot skip something it cannot distinguish from a working binding.
  *
  * @param {string} source
@@ -889,7 +889,7 @@ export function compileExpression(source, options = {}) {
 /**
  * Source → value, in one call.
  *
- * The convenience form, for callers evaluating an expression once — a test, a
+ * The convenience form, for callers evaluating an expression once - a test, a
  * one-off read. It is cache-backed, so it does not re-parse on repeat calls,
  * but it does re-look-up; a binding that runs on every update should hold the
  * function from compileExpression() instead.
@@ -963,7 +963,7 @@ export function expressionDependencies(source, options = {}) {
 }
 
 /**
- * Register a helper — the only kind of function an expression may call.
+ * Register a helper - the only kind of function an expression may call.
  *
  * Throws on bad input, unlike everything else here. A helper registry with a
  * typo'd name is a bug in the application, discovered in the first second of

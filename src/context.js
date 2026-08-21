@@ -1,5 +1,5 @@
 /**
- * Binding context — `$data`, `$root`, `$parent`, `$index`, `$length`.
+ * Binding context - `$data`, `$root`, `$parent`, `$index`, `$length`.
  *
  * An expression in a template is evaluated against a *context*, not against a
  * data object. The difference matters as soon as a template has a list in it:
@@ -9,7 +9,7 @@
  *
  * Design spec §5 fixes the four names and one further rule that is easy to miss:
  *
- *   > Outside such a block these still resolve — `$data` and `$root` are the
+ *   > Outside such a block these still resolve - `$data` and `$root` are the
  *   > top-level context, `$parent` is `null`, `$index` is `null`.
  *
  * So there is no "no context" state. A caller that passes a plain object gets it
@@ -19,7 +19,7 @@
  * ── $parent and $root are DATA, not contexts ─────────────────────────────────
  *
  * `$parent.name` reads the enclosing item's `name`. It does not read the
- * enclosing *context's* `name`, because a context has no `name` — it has
+ * enclosing *context's* `name`, because a context has no `name` - it has
  * `$data`. Knockout draws the line in the same place and for the same reason:
  * the names exist to reach data one level up, and making them contexts would
  * force every template that uses them to write `$parent.$data.name`.
@@ -34,7 +34,7 @@
  *
  * Data one level up is not the only thing a nested block wants. "Which row of
  * the OUTER list am I in?" is a question about position, and position lives on
- * the context, not on the data — so no amount of ancestor data answers it.
+ * the context, not on the data - so no amount of ancestor data answers it.
  *
  * `$parentContext` is the enclosing context itself, and it is the one name here
  * that IS a context. `$parentContext.$index` is the question above, answered.
@@ -67,8 +67,8 @@
  * Design spec §5 fixes four. This is the fifth, and it is here for one concrete
  * reason: `{{@last}}` inside a keyed `{{#each}}`. `@index` and `@first` are
  * answerable from `$index` alone; "am I the last one?" is not answerable without
- * knowing how many there are, and the alternative — leaving `{{@last}}` silently
- * empty inside a keyed block while it works inside an unkeyed one — would be a
+ * knowing how many there are, and the alternative - leaving `{{@last}}` silently
+ * empty inside a keyed block while it works inside an unkeyed one - would be a
  * trap set by the very feature meant to be the upgrade.
  *
  * It is `null` outside a list, exactly as `$index` is, so the §5 rule that every
@@ -92,7 +92,7 @@ const NO_PARENTS = Object.freeze([]);
  *
  * Walks the `$parentContext` chain on demand rather than accumulating an array
  * on the way down, so a context that is never asked for its ancestry never
- * builds one. Most never are — `$parents` is a name for the awkward case, while
+ * builds one. Most never are - `$parents` is a name for the awkward case, while
  * a keyed list creates a context per item per render whether any template
  * mentions it or not.
  *
@@ -112,8 +112,8 @@ function buildParents(ctx) {
 /**
  * The top-level context for a data object.
  *
- * `$root` is the same object as `$data` — at the root they are by definition the
- * same thing — and both of the block-only names are null.
+ * `$root` is the same object as `$data` - at the root they are by definition the
+ * same thing - and both of the block-only names are null.
  *
  * @param {*} data
  * @returns {{$data: *, $root: *, $parent: null, $index: null,
@@ -127,7 +127,7 @@ export function createRootContext(data) {
 }
 
 /**
- * A context one level down — for an item of a list, or the body of a `with`.
+ * A context one level down - for an item of a list, or the body of a `with`.
  *
  * `$root` is inherited rather than recomputed, so it stays the top of the tree
  * however deep the nesting goes. `$parent` is the enclosing *data*, per the note
@@ -175,7 +175,7 @@ export function createChildContext(parent, data, index = null, length = null) {
  *
  * Detection is by the presence of `$data`, which is the one field every context
  * has and no sensible data object does. A data object that genuinely has a
- * `$data` field is indistinguishable from a context and will be treated as one —
+ * `$data` field is indistinguishable from a context and will be treated as one -
  * the alternative is a branded symbol, which would mean a context built by hand
  * (in a test, or by a consumer) was not a context. The name is reserved; this is
  * what reserving it means.

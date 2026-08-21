@@ -3,12 +3,12 @@
  *
  * ── One registry, no private door ────────────────────────────────────────────
  *
- * Design spec §8 requires that Tier 3's four binding kinds — text, attr, block,
- * raw — become "built-in handlers on the new registry, the same mechanism public
+ * Design spec §8 requires that Tier 3's four binding kinds - text, attr, block,
+ * raw - become "built-in handlers on the new registry, the same mechanism public
  * `registerBinding()` uses". They do, literally: the bottom of this file calls
  * `registerBinding()` ten times through the same exported function a consumer
  * calls, with no privileged flag and no second code path. The eleventh built-in,
- * `each`, is registered by template-compiler.js through that same function — it
+ * `each`, is registered by template-compiler.js through that same function - it
  * lives elsewhere only because the reconciler needs a compiled block template
  * and this module must not know that templates exist. If the public API could
  * not express a built-in, the public API would be a demo.
@@ -17,7 +17,7 @@
  * `attr`, `block` and `raw` are discovered by the compiler from mustache tokens,
  * which are a fixed grammar; the six behaviour bindings and every custom one
  * are discovered from an ATTRIBUTE, which is open-ended. That asymmetry is in
- * the syntax, not in the registry — every handler here is the same shape, is
+ * the syntax, not in the registry - every handler here is the same shape, is
  * dispatched by the same `update()` call, and can be replaced by a consumer.
  *
  * ── The handler contract ─────────────────────────────────────────────────────
@@ -48,7 +48,7 @@
  *
  * `update` receives ALL the binding's nodes at once rather than being called per
  * node, because a region handler must re-index exactly once however many regions
- * it owns — calling it per node would re-index per node, which is quadratic and
+ * it owns - calling it per node would re-index per node, which is quadratic and
  * was the shape of the original code for a reason.
  *
  * ── primes, and why it exists ────────────────────────────────────────────────
@@ -106,8 +106,8 @@ export function registerBinding(name, handler) {
         }
     }
 
-    // Replacing a built-in is allowed — a consumer may legitimately want a
-    // different `text` — but it is loud, because it is almost always a name
+    // Replacing a built-in is allowed - a consumer may legitimately want a
+    // different `text` - but it is loud, because it is almost always a name
     // collision rather than an intention.
     if (registry.has(name)) {
         console.warn(`${PREFIX} registerBinding: "${name}" replaces an existing binding handler`);
@@ -183,7 +183,7 @@ const str = (value) => (value === null || value === undefined ? '' : String(valu
  *
  * What is settable is therefore exactly what is a *path*: a bare name, or a
  * member chain ending in one. `a + b` is not settable, `helper(x)` is not
- * settable, and `$data`/`$root`/`$parent`/`$index` are not settable — a context
+ * settable, and `$data`/`$root`/`$parent`/`$index` are not settable - a context
  * is a fact about position, not a variable.
  *
  * The object part is evaluated with the ordinary evaluator, so its prototype
@@ -195,14 +195,14 @@ const str = (value) => (value === null || value === undefined ? '' : String(valu
  * ── Frozen targets are not settable paths ────────────────────────────────────
  *
  * These are strict-mode modules, so `object[key] = value` against a frozen
- * object throws a TypeError — and a binding that throws takes the page down with
+ * object throws a TypeError - and a binding that throws takes the page down with
  * it, which is the one thing this layer promises never to do. A frozen target is
  * refused here instead, so every caller warns and skips through the path it
  * already has for an unsettable expression.
  *
  * That covers `$parents` and every context reached through `$parentContext`,
  * both frozen on purpose. It also covers a frozen view model, which could always
- * reach this line and would always have thrown — reachable long before either of
+ * reach this line and would always have thrown - reachable long before either of
  * those names existed, and waiting for the first person to freeze their data.
  *
  * @param {Object|null} ast
@@ -239,7 +239,7 @@ export function resolveWriteTarget(ast, context) {
  * `binding.evaluate` is prepared by the compiler and is one of two things: a
  * path walk, for the dotted paths that were the only supported form before M3,
  * or the expression evaluator, for everything else. The handler does not care
- * which — that decision belongs at compile time, where it is made once.
+ * which - that decision belongs at compile time, where it is made once.
  */
 const textHandler = {
     tracks: true,
@@ -314,16 +314,16 @@ const regionHandler = {
  *
  * The obvious implementation stashes the element and puts it back. It is wrong,
  * and subtly: while detached, every binding *inside* the element is invisible to
- * re-indexing, so it stops updating — and when the element comes back it carries
+ * re-indexing, so it stops updating - and when the element comes back it carries
  * whatever values it had when it left. Re-rendering from the captured body
  * cannot go stale, and reuses the machinery `{{#if}}` already relies on.
  *
  * The cost is node identity: toggling twice gives a new element. `{{#if}}` has
  * always behaved that way, so the two are at least consistent. `applyBindings`
  * is the one place `data-if` DOES preserve the element, and it can only do so
- * because nothing there is ever re-indexed — see apply-bindings.js.
+ * because nothing there is ever re-indexed - see apply-bindings.js.
  *
- * Truthiness is mustache truthiness — an empty array is falsy — so that
+ * Truthiness is mustache truthiness - an empty array is falsy - so that
  * `{{#if items}}` and `data-if="items"` cannot disagree about an empty list.
  */
 const ifHandler = {
@@ -369,7 +369,7 @@ const listeners = new WeakMap();
  * ── Why a method call is allowed here and nowhere else ───────────────────────
  *
  * Inside a list `$data` is the ITEM, and a bare name resolves against `$data`
- * and nowhere else — the evaluator deliberately does not walk up to `$parent`,
+ * and nowhere else - the evaluator deliberately does not walk up to `$parent`,
  * because a name that silently resolves one level up is a name whose meaning
  * depends on data you are not looking at. That leaves `$parent.remove($data)`
  * as the only way for a row to reach the list that owns it, and until the event
@@ -382,7 +382,7 @@ const listeners = new WeakMap();
  * reason. An event fires on a gesture, outside every effect, and calling a
  * method on your view model is the whole point of it.
  *
- * Neither call form goes through the evaluator's helper registry — the callee is
+ * Neither call form goes through the evaluator's helper registry - the callee is
  * resolved against the binding context instead, because an event handler is a
  * method on your data, not a pure helper. Arguments are evaluated by the
  * ordinary evaluator, so they obey every rule it does, and the method name is
@@ -393,7 +393,7 @@ const listeners = new WeakMap();
  *
  *     save                 $data     a reference; the receiver is not named
  *     save(x)              $data     a bare callee is a name on $data
- *     handlers.save        $data     STILL a reference — nothing is called here
+ *     handlers.save        $data     STILL a reference - nothing is called here
  *     handlers.save()      handlers  a method call keeps its receiver
  *
  * The last two look inconsistent and are not: they are what `const f = o.m; f()`
@@ -448,7 +448,7 @@ function dispatchEvent(binding, event, context) {
 
     if (ast.type === 'MethodCall') {
         // The receiver is evaluated once and kept, because it is both the thing
-        // the method is read from and the `this` it runs with — resolving it
+        // the method is read from and the `this` it runs with - resolving it
         // twice would let a getter disagree with itself between the two.
         self = evaluateAst(ast.object, context);
         const key = ast.computed ? evaluateAst(ast.property, context) : ast.property;
@@ -465,7 +465,7 @@ function dispatchEvent(binding, event, context) {
     if (typeof fn !== 'function') {
         warnOnce(
             `event:${binding.id}:${binding.expr}`,
-            `data-on-${binding.arg}="${binding.expr}" did not resolve to a function — ` +
+            `data-on-${binding.arg}="${binding.expr}" did not resolve to a function - ` +
             'an event binding names a handler on your data, or calls one'
         );
         return;
@@ -503,7 +503,7 @@ const appliedStyles = new WeakMap();
  * The suffix after `data-bind-` is the target:
  *
  *   text        textContent
- *   class       class tokens — see below
+ *   class       class tokens - see below
  *   value, checked, disabled, …   the DOM property (see PROPERTY_FIRST)
  *   anything else                 an attribute of that name
  *
@@ -538,7 +538,7 @@ const bindHandler = {
         if (target === 'html') {
             warnOnce(
                 'bind:html',
-                'data-bind-html is not supported — assigning innerHTML from data is an ' +
+                'data-bind-html is not supported - assigning innerHTML from data is an ' +
                 'XSS hole. Use {{{triple-stache}}}, which says so where an author can see it.'
             );
             return false;
@@ -573,7 +573,7 @@ const bindHandler = {
  *
  * A FALSY value contributes no classes at all. That is not a shortcut: the
  * documented idiom is `data-bind-class="isActive && 'on'"`, which evaluates to
- * `false` — not to `''` — when it is off, and stringifying that would add the
+ * `false` - not to `''` - when it is off, and stringifying that would add the
  * literal class `false` to the element.
  */
 function applyClasses(binding, el, value) {
@@ -596,13 +596,13 @@ function applyClasses(binding, el, value) {
  * Knockout writes `style: {color: shade, fontWeight: w}`, which works because it
  * compiles the binding string with the `Function` constructor and gets object
  * literals for free. This expression language has no object literal and will not
- * grow one — parsing `{…}` safely is most of the way to the `eval` this package
+ * grow one - parsing `{…}` safely is most of the way to the `eval` this package
  * exists to avoid. So the two halves are separated:
  *
  *   data-bind-style="look"              an object the view model already holds
  *   data-bind-style-color="shade"       one property, named in the attribute
  *
- * The second is the common case, and it is the one Knockout makes awkward — a
+ * The second is the common case, and it is the one Knockout makes awkward - a
  * single colour there means inventing an object to carry it.
  *
  * Property names are kebab-cased in the attribute, because an HTML attribute
@@ -613,7 +613,7 @@ function applyClasses(binding, el, value) {
 function setStyleProperty(el, property, value) {
     // Empty string included: `style.setProperty(p, '')` is a removal in CSSOM
     // anyway, and going through removeProperty says so. Zero is NOT in this
-    // list — `opacity: 0` is a legitimate value, and the falsy check that swept
+    // list - `opacity: 0` is a legitimate value, and the falsy check that swept
     // it away would be a bug an author could not see.
     if (value === null || value === undefined || value === false || value === '') {
         el.style.removeProperty(property);
@@ -629,7 +629,7 @@ function cssProperty(name) {
 
 /**
  * Apply an object of CSS properties, removing only the ones this binding put
- * there last time — the same ownership rule `applyClasses` follows, and for the
+ * there last time - the same ownership rule `applyClasses` follows, and for the
  * same reason: a static `style="margin: 4px"` on the element is not this
  * binding's to delete.
  */
@@ -637,7 +637,7 @@ function applyStyles(binding, el, value) {
     if (value !== null && value !== undefined && typeof value !== 'object') {
         warnOnce(
             `bind:style:${binding.id}`,
-            `data-bind-style="${binding.expr}" needs an object of CSS properties — got ` +
+            `data-bind-style="${binding.expr}" needs an object of CSS properties - got ` +
             `${typeof value}. For a single property use data-bind-style-<property>.`
         );
         return;
@@ -677,7 +677,7 @@ const OPTION_VALUE = Symbol('dm:option-value');
  *
  * Attribute order decides which of two bindings on one element runs first, and
  * `<select data-model="chosen" data-options="cities">` is a perfectly reasonable
- * thing to write — at which point the model writes a value into a select with no
+ * thing to write - at which point the model writes a value into a select with no
  * options at all, and it lands nowhere. Rather than impose an ordering between
  * binding kinds, the select remembers what it was asked for, and the next
  * rebuild honours it.
@@ -701,14 +701,14 @@ const PENDING_VALUE = Symbol('dm:pending-value');
  *
  * ── The three companion attributes ───────────────────────────────────────────
  *
- *   data-options-text="name"        the label — an expression against the item
- *   data-options-value="id"         the value — likewise; defaults to the item
+ *   data-options-text="name"        the label - an expression against the item
+ *   data-options-value="id"         the value - likewise; defaults to the item
  *   data-options-caption="'Any…'"   a leading blank-valued option
  *
  * They are expressions evaluated in a child context, so `$index`, `$parent` and
  * `$root` all resolve, and `data-options-text="first + ' ' + last"` works.
  * Knockout takes a property NAME here, which cannot express that. The cost is
- * that a literal caption needs its quotes — `"'Any…'"` — and that is the price
+ * that a literal caption needs its quotes - `"'Any…'"` - and that is the price
  * of every binding value in this package being an expression rather than
  * sometimes an expression and sometimes a string.
  *
@@ -784,7 +784,7 @@ function buildOptions(binding, el, items, context) {
         if (value === null || value === undefined || typeof value === 'object') {
             // Opaque on purpose: two items that stringify alike must not become
             // the same option. The NUL prefix is the same trick the reconciler
-            // uses for a synthesised key — no author-supplied string can collide.
+            // uses for a synthesised key - no author-supplied string can collide.
             option.value = `\0opt:${index}`;
             option[OPTION_VALUE] = value;
         } else if (typeof value !== 'string') {
@@ -804,7 +804,7 @@ function buildOptions(binding, el, items, context) {
  * Re-select what was selected before, by raw value where there is one.
  *
  * A value that no longer has an option is dropped rather than forced, which
- * leaves the browser's own default (the first option, or the caption) showing —
+ * leaves the browser's own default (the first option, or the caption) showing -
  * the honest result when the thing that was chosen is no longer on offer.
  */
 function restoreSelection(el, wanted) {
@@ -843,7 +843,7 @@ function restoreSelection(el, wanted) {
  * At write time the object part is evaluated and the last step is used as a key,
  * so `data-model="user.email"` assigns to `user.email` and `data-model="a[i]"`
  * assigns to whichever element `i` currently names. Anything that is not a path
- * — a comparison, a helper call, a context variable — is refused at compile time
+ * - a comparison, a helper call, a context variable - is refused at compile time
  * with a warning, because a binding you cannot write through is not two-way.
  *
  * There is no observable-unwrapping magic. A tracking proxy (what Domma's
@@ -978,7 +978,7 @@ function writeToControl(el, value) {
         case 'select-multiple': {
             const wanted = Array.isArray(value) ? value : [];
 
-            // No options yet — same story as a single select, so remember the
+            // No options yet - same story as a single select, so remember the
             // request until they turn up. See PENDING_VALUE.
             if (el.options.length === 0) {
                 if (wanted.length > 0) el[PENDING_VALUE] = wanted;
@@ -1031,7 +1031,7 @@ const focusing = new WeakSet();
  *
  * Knockout calls this `hasFocus`. The name here says which way the arrow points,
  * and matches `data-model` in being the second of only two two-way bindings in
- * the package — everything else is a read.
+ * the package - everything else is a read.
  *
  * Both directions earn their place. Data → DOM is how a view model moves the
  * caret into the field it has just revealed, which otherwise means reaching for
@@ -1050,7 +1050,7 @@ const focusing = new WeakSet();
  * ── A write-back that cannot land is not fatal ───────────────────────────────
  *
  * `data-model` refuses to be one-way: a form control you cannot write through is
- * broken. Focus is different — `data-focus="isEditing && !isSaving"` is a
+ * broken. Focus is different - `data-focus="isEditing && !isSaving"` is a
  * perfectly sensible way to drive focus from derived state, and it is only the
  * write-back that is impossible. So the data → DOM direction keeps working and
  * the write warns once, naming the expression.
@@ -1134,7 +1134,7 @@ registerBinding('focus', focusHandler);
 
 /**
  * The kinds registered above, for tests that must notice a built-in going
- * missing. Not exported from index.js — it is a fact about this module, not a
+ * missing. Not exported from index.js - it is a fact about this module, not a
  * promise to consumers.
  */
 export const BUILT_IN_BINDINGS = Object.freeze([

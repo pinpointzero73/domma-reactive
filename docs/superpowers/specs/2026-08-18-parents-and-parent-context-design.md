@@ -1,4 +1,4 @@
-# `$parents[n]` and `$parentContext` — design
+# `$parents[n]` and `$parentContext` - design
 
 **Status:** agreed, not implemented
 **Ships as:** 0.6.0
@@ -8,8 +8,8 @@
 
 Close the ancestor gap against Knockout. Two names join the binding context:
 
-- **`$parents`** — ancestor *data*, nearest first. Reaches a grandparent's fields.
-- **`$parentContext`** — the enclosing *context*. Reaches a grandparent's position.
+- **`$parents`** - ancestor *data*, nearest first. Reaches a grandparent's fields.
+- **`$parentContext`** - the enclosing *context*. Reaches a grandparent's position.
 
 They are companions rather than alternatives, and Knockout has both for the reason described below.
 
@@ -43,7 +43,7 @@ does the same.
 
 ### `$parentContext`
 
-The enclosing context object, or `null` at the root. Not inherited — it is the *immediate* parent,
+The enclosing context object, or `null` at the root. Not inherited - it is the *immediate* parent,
 set once at creation, which is what makes it a chain rather than a shortcut.
 
 ### `$parents`
@@ -56,7 +56,7 @@ Ancestor data, nearest first, matching Knockout exactly:
 | `$parents` at the root | `[]` |
 | `$parents[0]` at the root | `undefined`, where `$parent` is `null` |
 | `$parents[$parents.length - 1]` | `$root`'s data, at depth ≥ 1 |
-| `$parents[99]` | `undefined` — ordinary array indexing, which never throws |
+| `$parents[99]` | `undefined` - ordinary array indexing, which never throws |
 
 The root is the one place the two disagree, and neither value is worth changing to make them
 agree: `$parent` is `null` there because §5 requires every context name to resolve everywhere, and
@@ -72,7 +72,7 @@ case, and reading it should not build an array.
 
 `$parents` is a memoised getter over the `$parentContext` chain, so nothing is allocated unless a
 template actually mentions the name. This follows the pattern `lifecycle.js`'s `live` counter and
-the factory's `usesLength` already set — do not pay for what the template did not ask for.
+the factory's `usesLength` already set - do not pay for what the template did not ask for.
 
 ```javascript
 /** Ancestor data, nearest first. Frozen: a context is a statement, not scratch space. */
@@ -107,13 +107,13 @@ The context object stops being a plain literal, gaining a getter defined before 
 
 `Object.freeze` does not prevent the closure variable being assigned, so memoisation survives it.
 
-`createRootContext` gets `$parentContext: null` and `$parents: []` — frozen, shared, and constant,
+`createRootContext` gets `$parentContext: null` and `$parents: []` - frozen, shared, and constant,
 so the root needs no getter.
 
 ## Writes, and the latent throw this fixes
 
 `resolveWriteTarget` returns `{object, key}` and `handlers.js` then performs `target.object[target.key] = value`
-unguarded. These are strict-mode modules, so **assigning to a frozen object throws a TypeError** —
+unguarded. These are strict-mode modules, so **assigning to a frozen object throws a TypeError** -
 which would break the rule that nothing in the binding layer throws on bad input.
 
 This is already reachable: `data-model="frozen.x"` on frozen view-model data throws today. Freezing
@@ -128,17 +128,17 @@ resolved:
 ```
 
 `null` is already the established "not a settable path" signal, so every caller warns properly
-instead of throwing — `data-model` and `data-focus` both already handle it.
+instead of throwing - `data-model` and `data-focus` both already handle it.
 
 What this yields:
 
 | Expression | Result |
 |---|---|
-| `$parents = x` | refused — bare context key, already refused by `CONTEXT_KEYS` |
+| `$parents = x` | refused - bare context key, already refused by `CONTEXT_KEYS` |
 | `$parentContext = x` | refused, same route |
-| `$parents[0] = x` | refused, one warning — the array is frozen |
-| `$parentContext.$index = 1` | refused — a context is a statement, not scratch space |
-| `$parents[1].name = x` | **allowed** — ancestor data, exactly as `$parent.name` is today |
+| `$parents[0] = x` | refused, one warning - the array is frozen |
+| `$parentContext.$index = 1` | refused - a context is a statement, not scratch space |
+| `$parents[1].name = x` | **allowed** - ancestor data, exactly as `$parent.name` is today |
 | `data-model="frozenUserData.x"` | refused with a warning, where it previously threw |
 
 The last row is a behaviour change: a thrown TypeError becomes a warning and a skipped binding. That
@@ -171,19 +171,19 @@ exactly one link. Different jobs.
 ## Failure modes
 
 Nothing new can throw. Out-of-range indexing yields `undefined`, as any array does, and a binding
-that renders `undefined` renders empty — existing behaviour, unchanged.
+that renders `undefined` renders empty - existing behaviour, unchanged.
 
 ## Testing
 
-At this repository's ratio, roughly 150–250 test lines.
+At this repository's ratio, roughly 150-250 test lines.
 
 - `$parentContext` is `null` at the root, and the enclosing context one level down
 - `$parents` is `[]` at the root
 - `$parents[0]` is identical to `$parent`, at every depth
 - three levels deep: `$parents` is `[level2, level1, root]` in that order
 - `$parents` is frozen, and so is the root's
-- the getter is memoised — `ctx.$parents === ctx.$parents` for the same context
-- two sibling contexts do not share an array — `a.$parents !== b.$parents` where both are `[root]`
+- the getter is memoised - `ctx.$parents === ctx.$parents` for the same context
+- two sibling contexts do not share an array - `a.$parents !== b.$parents` where both are `[root]`
 - the root's `$parents` is the shared frozen empty constant, which is safe precisely because it is
   both empty and frozen
 - `Object.getOwnPropertyDescriptor(ctx, '$parents').get` is a function, proving it is not eagerly
@@ -191,17 +191,17 @@ At this repository's ratio, roughly 150–250 test lines.
 - end to end through a nested keyed list: `$parents[1].name` and `$parentContext.$index` both render
 - `$parents[99]` renders empty rather than throwing
 - every row of the writes table above, each warning fired exactly once
-- `data-model="frozen.x"` warns rather than throwing — the regression this fixes
+- `data-model="frozen.x"` warns rather than throwing - the regression this fixes
 
 ## Documentation
 
-- **`README.md`** — the `Binding context` section gains both names; `Known limits` loses "There is
+- **`README.md`** - the `Binding context` section gains both names; `Known limits` loses "There is
   no `$parents[2]` yet"; the migration table's `$parents[2]` row becomes **identical**, and a
   `$parentContext` row is added; `Limits and non-goals` loses `$parents[n]` from the gap list,
-  leaving components and slots. The `What it does` opening does not change — this is a refinement,
+  leaving components and slots. The `What it does` opening does not change - this is a refinement,
   not a headline capability.
-- **`CHANGELOG.md`** — a `## [0.6.0]` entry.
-- **`Tutorial.md`** — no change. The contacts app has no nested list, and inventing one to
+- **`CHANGELOG.md`** - a `## [0.6.0]` entry.
+- **`Tutorial.md`** - no change. The contacts app has no nested list, and inventing one to
   demonstrate this would make the tutorial worse.
 
 ## Out of scope
@@ -209,5 +209,5 @@ At this repository's ratio, roughly 150–250 test lines.
 - `$rawData`. It exists in Knockout because Knockout unwraps observables; here `$data` *is* the raw
   data, so it is a spelling difference rather than a gap.
 - `$parentContext` on `applyBindings`' server-rendered path beyond what child contexts already give
-  it — the same `createChildContext` is used, so it follows without special work, and no separate
+  it - the same `createChildContext` is used, so it follows without special work, and no separate
   design is needed.

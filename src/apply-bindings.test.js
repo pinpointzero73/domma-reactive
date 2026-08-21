@@ -1,5 +1,5 @@
 /**
- * applyBindings — activating DOM that already exists.
+ * applyBindings - activating DOM that already exists.
  *
  * The three properties that have to hold, and that the brief singled out:
  * idempotence (applying twice must not double-bind), disposal (a handle that
@@ -175,7 +175,7 @@ describe('data-if detaches the element rather than re-rendering it', () => {
 
         vm.open = true;
         handle.update(vm);
-        // Node identity across a toggle — which the compiled `data-if` cannot
+        // Node identity across a toggle - which the compiled `data-if` cannot
         // offer, because it re-renders its region from captured source.
         expect(host.querySelector('p')).toBe(original);
 
@@ -263,7 +263,7 @@ describe('data-each reconciles a list over the element\'s own contents', () => {
 
     it('does not activate the item template as page markup', () => {
         // The <li> is a template, so it must not end up in the WeakSet as a
-        // bound element — it is about to be removed from the document.
+        // bound element - it is about to be removed from the document.
         serve('<ul data-each="rows key=id"><li data-bind-text="name">x</li></ul>');
         const template = host.querySelector('li');
 
@@ -317,8 +317,8 @@ describe('{{ }} in already-rendered DOM', () => {
         warn.mockRestore();
     });
 
-    // The documented exception. A data-each body is a TEMPLATE — lifted out,
-    // compiled and cloned per item — so mustache there is substituted and the
+    // The documented exception. A data-each body is a TEMPLATE - lifted out,
+    // compiled and cloned per item - so mustache there is substituted and the
     // warning was telling the author to replace working markup.
     it('says nothing about mustache inside a data-each item template', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -389,7 +389,7 @@ describe('applying twice', () => {
 
         expect(first.bindings).toBe(1);
         expect(second.bindings).toBe(0);
-        // The first handle still owns it — the second call changed nothing.
+        // The first handle still owns it - the second call changed nothing.
         expect(host.querySelector('span').textContent).toBe('one');
 
         first.dispose();
@@ -575,7 +575,7 @@ describe('a custom region binding', () => {
 // applyBindings has its own compile path, separate from the template compiler's,
 // so "only the event binding may call a method" has to be true twice. The app
 // test above proves the permissive half here (a row calls $parent.remove); this
-// proves the strict half, which is the one that would fail silently — a leak
+// proves the strict half, which is the one that would fail silently - a leak
 // would not break anything visible, it would just let a method run inside an
 // effect on every render.
 
@@ -614,12 +614,12 @@ describe('applyBindings refuses a method call outside an event binding', () => {
 //
 // Every other test here proves one binding in isolation, which is how a suite
 // can be green while the library is unusable: the failure that prompted this one
-// was not in any single binding but in the SEAM between two of them — a keyed
+// was not in any single binding but in the SEAM between two of them - a keyed
 // list renders, an event binding fires, and yet a row still had no way to name
 // the list that owns it, so a delete button was unspellable and every test
 // passed anyway.
 //
-// So this builds a real thing — add, edit, toggle, remove, derive, empty state —
+// So this builds a real thing - add, edit, toggle, remove, derive, empty state -
 // out of nothing but the public API, and asserts on what the user would see. It
 // is deliberately the shape of the smallest app anyone actually writes.
 
@@ -720,7 +720,7 @@ describe('a whole small application', () => {
 // Wrapping them in a `<div>` to hold the attribute changes the layout, and in a
 // table it is not even valid HTML.
 //
-// `compile()` has never needed this — `{{#if}}` already delimits a region with
+// `compile()` has never needed this - `{{#if}}` already delimits a region with
 // comments. It is applyBindings, where the markup is the page and the author
 // cannot add mustache, that has nothing to offer.
 
@@ -782,7 +782,7 @@ describe('virtual bindings', () => {
         // The inner block's anchors travel with the outer block's held nodes.
         // If they lost their siblings on the way out, the inner range would come
         // back empty and its content would reappear regardless of its own
-        // condition — silently, and only on the second toggle.
+        // condition - silently, and only on the second toggle.
         serve(
             '<ul><!-- dm if: outer.value --><li>a</li>' +
             '<!-- dm if: inner.value --><li>b</li><!-- /dm --><!-- /dm --></ul>'
@@ -804,7 +804,7 @@ describe('virtual bindings', () => {
 
     it('honours a nested block that changed while the outer one was closed', () => {
         // The case that decides how held nodes are stored. While the outer block
-        // is closed, the inner block's anchors are out of the document — but it
+        // is closed, the inner block's anchors are out of the document - but it
         // is still live, and its condition can still change. It has to be able to
         // insert into wherever its anchors currently are, which means they must
         // still have a parent and their siblings.

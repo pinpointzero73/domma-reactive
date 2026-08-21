@@ -2,7 +2,7 @@
  * The specification of what this package promises not to break.
  *
  * The name list below is the contract: adding to it is a minor version, taking
- * from it is a major one. But names alone are a weak contract — a namespace
+ * from it is a major one. But names alone are a weak contract - a namespace
  * object with the right keys can still have them bound to the wrong functions,
  * and `Object.keys()` cannot tell. So each name is also pinned to the
  * implementation it must resolve to.
@@ -72,7 +72,7 @@ describe('public API', () => {
         for (const [name, value] of Object.entries(api)) {
             if (NAMESPACE_EXPORTS.includes(name)) {
                 // A namespace earns its exemption only by being a plain object
-                // whose every member is itself callable — an empty object or
+                // whose every member is itself callable - an empty object or
                 // one carrying data would still fail here.
                 expect(typeof value, `${name} should be an object`).toBe('object');
                 expect(Object.keys(value).length, `${name} should not be empty`).toBeGreaterThan(0);
@@ -126,7 +126,7 @@ describe('public API', () => {
     it('binds the TemplateCompiler namespace to the same functions it exports', () => {
         // The namespace is a second route to three of the names above. If the
         // two routes ever diverge, a caller reaching through the object gets
-        // different behaviour from one importing the named export — and the
+        // different behaviour from one importing the named export - and the
         // pairwise checks above cannot see it, because they only test the
         // object's identity, never its contents.
         expect(api.TemplateCompiler.annotate, 'TemplateCompiler.annotate').toBe(api.annotate);
@@ -151,7 +151,7 @@ describe('public API', () => {
     it('withholds the internals that graph.js exports', () => {
         // These exist upstream and are kept out on purpose (see index.js).
         // The assertion is two-sided: it fails if they leak into the surface,
-        // and it fails if they vanish from graph.js — at which point the
+        // and it fails if they vanish from graph.js - at which point the
         // rationale recorded in index.js has gone stale and needs revisiting.
         for (const internal of ['flush', 'drainPending', 'reactive']) {
             expect(graph[internal], `graph.js should still have ${internal}`).toBeDefined();
@@ -221,7 +221,7 @@ describe('public API', () => {
 
         const name = api.observable('alice');
 
-        // A renderer is the caller's to supply — the package has none.
+        // A renderer is the caller's to supply - the package has none.
         const stubRender = (tmpl, data) => tmpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => data[k] ?? '');
 
         const ctrl = api.compile('<b>{{name}}</b>', {name: name.value}, host, stubRender);
@@ -237,7 +237,7 @@ describe('public API', () => {
         host.remove();
     });
 
-    it('compiles and renders with NO renderFn — the standalone case', () => {
+    it('compiles and renders with NO renderFn - the standalone case', () => {
         // The gap M3 closes. Before it, this call threw "renderFn is not a
         // function", so a consumer who ran `npm install domma-reactive` and
         // nothing else could not render a template with the package's own

@@ -4,7 +4,7 @@
  * Used as the change-detection gate for observables and the propagation
  * short-circuit for computeds, so it must be cheap and it must terminate.
  * Termination is guaranteed: the cycle guard below stops self-referential
- * data recursing forever. Exception-freedom is not — a throwing property
+ * data recursing forever. Exception-freedom is not - a throwing property
  * getter propagates to the caller, and absurdly deep acyclic nesting can
  * still exhaust the stack.
  *
@@ -14,7 +14,7 @@
  * every write.
  *
  * Structural comparison covers Date, Array and plain objects. Everything else
- * — functions, class instances, Map, Set, DOM nodes — falls back to reference
+ * - functions, class instances, Map, Set, DOM nodes - falls back to reference
  * equality, which is the correct conservative answer: it may report a change
  * that did not happen, never the reverse.
  *
@@ -27,7 +27,7 @@ export function isEqual(a, b) {
 }
 
 /**
- * A plain object is one carrying no behaviour of its own — an object literal,
+ * A plain object is one carrying no behaviour of its own - an object literal,
  * or an Object.create(null) bag. Anything else is somebody's instance, and not
  * ours to compare field by field.
  *
@@ -68,7 +68,7 @@ function deepEqual(a, b, seen) {
     // This sits ABOVE the cycle guard deliberately, and safely: a non-plain
     // pair returns without recursing, so no cycle can route through one and
     // the guard has nothing to protect. Anyone adding structural comparison
-    // here — for Map, say — breaks that invariant and must move this below.
+    // here - for Map, say - breaks that invariant and must move this below.
     if (!aIsArray && (!isPlainProto(Object.getPrototypeOf(a)) || !isPlainProto(Object.getPrototypeOf(b)))) {
         return false;
     }

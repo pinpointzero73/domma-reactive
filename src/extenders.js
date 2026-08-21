@@ -1,5 +1,5 @@
 /**
- * Extenders — layering behaviour onto an observable after it exists.
+ * Extenders - layering behaviour onto an observable after it exists.
  *
  * `observable(initial, {equals})` says how an observable compares values. An
  * extender says how it *announces* them: hold the notification back for 300ms,
@@ -12,7 +12,7 @@
  * Exactly two things, both on the notification path:
  *
  *   control.setEquals(fn)   replace the change gate
- *   control.intercept(wrap) wrap the announcement — wrap(next) => (value) => {}
+ *   control.intercept(wrap) wrap the announcement - wrap(next) => (value) => {}
  *
  * It may not touch the stored value. That is the invariant the whole design
  * rests on: **a write always lands, immediately, whatever is extended onto it**.
@@ -21,7 +21,7 @@
  * original `throttle` deferred the write itself, which is exactly why reading a
  * throttled observable used to return a value that was already stale, and why
  * Knockout deprecated it in favour of `rateLimit`. That mistake is not repeated
- * here — `throttle` is accepted as a name and given rateLimit's behaviour.
+ * here - `throttle` is accepted as a name and given rateLimit's behaviour.
  *
  * ── Interception stacks; rate limiting does not ──────────────────────────────
  *
@@ -36,7 +36,7 @@
  *
  * A rate limiter uses `setTimeout`, not the graph's microtask flush, because a
  * delay measured in milliseconds is not a delay measured in propagation passes.
- * The consequence is that `flushSync()` does NOT deliver a held notification —
+ * The consequence is that `flushSync()` does NOT deliver a held notification -
  * it drains the dependency graph, and a held notification has not reached the
  * graph yet. A test advances its own clock.
  */
@@ -48,7 +48,7 @@ const registry = new Map();
 
 /**
  * Names this module owns. They are registered through the same public
- * `registerExtender()` a consumer would use — the mechanism is not a side door —
+ * `registerExtender()` a consumer would use - the mechanism is not a side door -
  * but they may not be unregistered, because a page that removed `rateLimit`
  * from under a library that relies on it would fail somewhere else entirely.
  */
@@ -91,7 +91,7 @@ export function unregisterExtender(name) {
 /**
  * Run every extender named in a spec against one observable's control surface.
  * An unknown name warns and is skipped; it never throws, for the same reason a
- * broken binding never throws — one bad option must not take down the page.
+ * broken binding never throws - one bad option must not take down the page.
  *
  * @param {Object} control
  * @param {Object} spec
@@ -118,7 +118,7 @@ export function applyExtenders(control, spec) {
 // ── notify ────────────────────────────────────────────────────────────────────
 
 /**
- * `notify: 'always'` — announce every write, including one the change gate
+ * `notify: 'always'` - announce every write, including one the change gate
  * would have swallowed.
  *
  * Implemented by replacing the comparator rather than by bypassing it, so it
@@ -128,7 +128,7 @@ export function applyExtenders(control, spec) {
  */
 registerExtender('notify', (control, value) => {
     if (value !== 'always') {
-        console.warn(`${PREFIX} extend: notify accepts only 'always' — got ${JSON.stringify(value)}`);
+        console.warn(`${PREFIX} extend: notify accepts only 'always' - got ${JSON.stringify(value)}`);
         return;
     }
     control.setEquals(() => false);
@@ -149,7 +149,7 @@ function readLimit(value) {
 
     if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout < 0) {
         console.warn(
-            `${PREFIX} extend: rateLimit needs a timeout in milliseconds — ` +
+            `${PREFIX} extend: rateLimit needs a timeout in milliseconds - ` +
             `got ${JSON.stringify(timeout)}`
         );
         return null;
@@ -159,7 +159,7 @@ function readLimit(value) {
     if (method !== 'notifyWhenChangesStop' && method !== 'notifyAtFixedRate') {
         console.warn(
             `${PREFIX} extend: rateLimit method must be 'notifyWhenChangesStop' or ` +
-            `'notifyAtFixedRate' — got ${JSON.stringify(method)}`
+            `'notifyAtFixedRate' - got ${JSON.stringify(method)}`
         );
         return null;
     }
@@ -170,7 +170,7 @@ function readLimit(value) {
 /**
  * Hold `value` until the window closes, then deliver the most recent one.
  *
- * The two methods differ in one line — whether an arriving change resets the
+ * The two methods differ in one line - whether an arriving change resets the
  * deadline. `notifyWhenChangesStop` measures *quiet*: the window restarts on
  * every change, so a continuous stream of keystrokes announces nothing until
  * typing stops. `notifyAtFixedRate` measures *elapsed time*: the deadline is set
@@ -222,7 +222,7 @@ registerExtender('rateLimit', (control, value) => {
 
 /**
  * `throttle` is Knockout's older name for the same thing. It is an alias rather
- * than a reimplementation of Knockout's original semantics — see the note at the
+ * than a reimplementation of Knockout's original semantics - see the note at the
  * top of this file on why deferring the write is the wrong behaviour.
  */
 registerExtender('throttle', (control, value) => {

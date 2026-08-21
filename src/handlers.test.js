@@ -55,7 +55,7 @@ describe('the registry', () => {
 
     it('registered the built-ins through the PUBLIC function', () => {
         // §8 requires the built-ins to use the same mechanism registerBinding()
-        // offers. If they took a private path, replacing one would not warn —
+        // offers. If they took a private path, replacing one would not warn -
         // because the warning lives in registerBinding, and a private path
         // would not have put them in the map it checks.
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -96,7 +96,7 @@ describe('the registry', () => {
         const handler = bindingHandler('bind');
         unregisterBinding('bind');
 
-        // No handler, no update — but no throw either.
+        // No handler, no update - but no throw either.
         expect(() => ctrl.updateAll({name: 'Grace'})).not.toThrow();
         expect(host.textContent).toBe('Ada');
 
@@ -248,7 +248,7 @@ describe('data-if', () => {
 
         ctrl.updateAll({ok: false});
         expect(host.querySelectorAll('div').length).toBe(0);
-        // Everything after the element is untouched — the region ended at the
+        // Everything after the element is untouched - the region ended at the
         // right </div>, not at the first one.
         expect(host.querySelector('p').textContent).toBe('after');
     });
@@ -506,7 +506,7 @@ describe('data-bind-*', () => {
         warn.mockRestore();
     });
 
-    it('escapes nothing and interprets nothing — text is text', () => {
+    it('escapes nothing and interprets nothing - text is text', () => {
         compile('<p data-bind-text="h"></p>', {h: '<b>not markup</b>'}, host);
         expect(host.querySelector('p').textContent).toBe('<b>not markup</b>');
         expect(host.querySelector('b')).toBeNull();
@@ -715,7 +715,7 @@ describe('resolveWriteTarget', () => {
         expect(target("'literal'", {})).toBeNull();
     });
 
-    it('refuses the context variables — position is not a variable', () => {
+    it('refuses the context variables - position is not a variable', () => {
         for (const name of ['$data', '$root', '$parent', '$index']) {
             expect(target(name, {}), name).toBeNull();
         }
@@ -743,11 +743,11 @@ describe('resolveWriteTarget', () => {
 
 // ── Behaviour bindings inside a context-shifting block ────────────────────────
 
-describe('the M4 seam — an UNKEYED block still degrades, loudly', () => {
+describe('the M4 seam - an UNKEYED block still degrades, loudly', () => {
     /*
      * M4 shipped per-item bindings, but only for a block with `key=`. An
      * unkeyed {{#each}} still re-renders to a string, so it still cannot carry
-     * a behaviour binding — and now warns twice: once that it is not
+     * a behaviour binding - and now warns twice: once that it is not
      * reconciling at all, and once that this particular binding was dropped.
      * `calls.flat()` rather than `calls[0]` because the order of the two is an
      * implementation detail and pinning it would break on the next change.
@@ -794,7 +794,7 @@ describe('the M4 seam — an UNKEYED block still degrades, loudly', () => {
 describe('a binding revealed by a block is primed, not left blank', () => {
     /*
      * The bug this covers: `update()` was per-binding, so a block opening did
-     * not touch the bindings it had just revealed. `updateAll()` masked it —
+     * not touch the bindings it had just revealed. `updateAll()` masked it -
      * it walks every binding, and by the time it reached the revealed one the
      * block had already rendered it. Domma updates ONE binding per effect, so
      * Domma got the broken path and the suite did not.
@@ -892,7 +892,7 @@ describe('a binding revealed by a block is primed, not left blank', () => {
         expect(seen).toEqual([1]);
 
         // Closing and re-opening builds a NEW button, which must get its own
-        // single listener — not zero, and not two.
+        // single listener - not zero, and not two.
         data.open = false;
         openBlock(ctrl, data);
         data.open = true;
@@ -906,7 +906,7 @@ describe('a binding revealed by a block is primed, not left blank', () => {
         // One settle round is not enough here. When `a` is false the outer
         // region renders empty, so the inner `data-if` has no anchors in the
         // DOM at all and cannot be queued. Only once the outer one has
-        // rendered does the inner one exist — and until it is primed, the
+        // rendered does the inner one exist - and until it is primed, the
         // renderer has emitted its element verbatim and it is visible
         // regardless of `c`.
         const data = {a: false, c: false};
@@ -929,7 +929,7 @@ describe('a binding revealed by a block is primed, not left blank', () => {
         // A region's nodes are a {open, close} PAIR, rebuilt as a fresh object
         // on every index(). Keying "have I seen this?" on that object rather
         // than on the opening anchor would make every region look new on every
-        // re-index, re-rendering the whole page for one unrelated change — and
+        // re-index, re-rendering the whole page for one unrelated change - and
         // looping until the settle cap.
         const data = {open: false, always: true};
         const ctrl = compile(
@@ -990,7 +990,7 @@ describe('the settle loop converges', () => {
 // The gap this closes: inside a list, `$data` is the ITEM, and a bare name
 // resolves against $data and nowhere else (expression.js deliberately does not
 // walk up to $parent). So a row's delete button had no way to name the list that
-// owns it — `$parent.remove($data)` is the only spelling, and it did not parse.
+// owns it - `$parent.remove($data)` is the only spelling, and it did not parse.
 //
 // It parses now, for event bindings only. Everything else still refuses.
 
@@ -1014,7 +1014,7 @@ describe('data-on-* can call a method on the data', () => {
     it('binds `this` to the receiver, exactly as JavaScript does', () => {
         // `handlers.save()` keeps its receiver; a bare reference `handlers.save`
         // does not, and is documented as running with `this` = $data. That is
-        // not an inconsistency to apologise for — it is precisely what
+        // not an inconsistency to apologise for - it is precisely what
         // `const f = o.m; f()` does in the language the author already knows.
         let self = null;
         const handlers = {save() { self = this; }};
@@ -1114,13 +1114,13 @@ describe('every OTHER binding still refuses a method call', () => {
 // An HTML attribute value is entity-encoded text: `data-bind-class="a &amp;&amp;
 // b"` and `data-bind-class="a && b"` are the SAME attribute, and every browser
 // hands both to getAttribute() as `a && b`. The compiler reads its attributes
-// out of a template STRING, so it has to do that decoding itself — otherwise the
+// out of a template STRING, so it has to do that decoding itself - otherwise the
 // two spellings behave differently, which is the one thing HTML says they cannot.
 //
 // This is not a corner case reached by writing `&amp;` on purpose. Serialising
 // DOM back to HTML (`el.innerHTML`, which is how applyBindings captures a
 // data-each body) escapes every `&` it emits, so a perfectly ordinary
-// `data-bind-class="done && 'struck'"` — the documented idiom — comes back out
+// `data-bind-class="done && 'struck'"` - the documented idiom - comes back out
 // as `&amp;&amp;` without anyone having typed an entity anywhere.
 
 describe('an expression attribute is decoded like the HTML it is', () => {
@@ -1136,7 +1136,7 @@ describe('an expression attribute is decoded like the HTML it is', () => {
 
     it('decodes in a region attribute too', () => {
         // Asserted on the FALSY case: a data-if whose expression fails to parse
-        // is skipped, which leaves the body on the page — so "it is shown when
+        // is skipped, which leaves the body on the page - so "it is shown when
         // true" would pass whether the decoding worked or not.
         compile(`<b data-if="a &amp;&amp; b">shown</b>`, {a: 1, b: 0}, host);
         expect(host.textContent).not.toContain('shown');
@@ -1159,7 +1159,7 @@ describe('an expression attribute is decoded like the HTML it is', () => {
 
     it('decodes &amp; last, so &amp;lt; stays the text "&lt;"', () => {
         // Decoding in the wrong order turns the escaped form of an entity into
-        // the entity itself — the classic double-decode.
+        // the entity itself - the classic double-decode.
         compile(`<b data-bind-text="'&amp;lt;'"></b>`, {}, host);
         expect(host.querySelector('b').textContent).toBe('&lt;');
     });
@@ -1174,7 +1174,7 @@ describe('an expression attribute is decoded like the HTML it is', () => {
 
 // ── data-bind-style ───────────────────────────────────────────────────────────
 //
-// Two spellings, because the expression language has no object literal — it
+// Two spellings, because the expression language has no object literal - it
 // cannot, without becoming the thing a CSP forbids. `data-bind-style="obj"`
 // takes a map from the view model; `data-bind-style-<prop>` names one property
 // in the attribute, where the author would otherwise have had to invent an

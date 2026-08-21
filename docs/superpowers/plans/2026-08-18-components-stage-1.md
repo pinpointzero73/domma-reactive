@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Ships as:** 0.7.0. The roadmap agreed on 2026-08-18 is 0.6.0 `$parents[n]`, **0.7.0 components**, 0.8.0 slots, 1.0.0 Knockout parity complete. Build 0.6.0 first — this plan assumes `$parents[n]` has already shipped.
+**Ships as:** 0.7.0. The roadmap agreed on 2026-08-18 is 0.6.0 `$parents[n]`, **0.7.0 components**, 0.8.0 slots, 1.0.0 Knockout parity complete. Build 0.6.0 first - this plan assumes `$parents[n]` has already shipped.
 
-**Goal:** Add a component model to domma-reactive — `registerComponent()`, a `data-component` binding, params in both spellings, view-model lifecycle, `$component`, and dynamic component swapping — closing the last substantial capability gap against Knockout apart from slots.
+**Goal:** Add a component model to domma-reactive - `registerComponent()`, a `data-component` binding, params in both spellings, view-model lifecycle, `$component`, and dynamic component swapping - closing the last substantial capability gap against Knockout apart from slots.
 
-**Architecture:** Components reuse the keyed-list machinery almost entirely. A component instance *is* a `createInstance()` instance: a cloned template, its own child context, its own effects, an anchored region, and node-scoped disposal. The new code is a registry, a params collector, a context field, and one binding handler. The handler follows the `each` seam exactly — `src/components.js` knows nothing about templates, and `template-compiler.js` hands it a factory-builder, so the dependency runs one way and no cycle is created.
+**Architecture:** Components reuse the keyed-list machinery almost entirely. A component instance *is* a `createInstance()` instance: a cloned template, its own child context, its own effects, an anchored region, and node-scoped disposal. The new code is a registry, a params collector, a context field, and one binding handler. The handler follows the `each` seam exactly - `src/components.js` knows nothing about templates, and `template-compiler.js` hands it a factory-builder, so the dependency runs one way and no cycle is created.
 
 **Tech Stack:** Vanilla ES modules, Vitest + jsdom, Rollup. No new dependencies.
 
@@ -14,10 +14,10 @@
 
 ## Read first
 
-- `docs/superpowers/specs/2026-08-18-component-params-design.md` — the agreed design. This plan implements it; where they disagree, the spec wins.
-- `src/handlers.js` lines 24–64 — the binding handler contract.
-- `src/reconciler.js` lines 380–408 — `createEachHandler` / `registerEachHandler`, the seam this copies.
-- `src/reconciler.js` lines 302–330 — `reconcile`, for how per-region state is held in a `WeakMap` keyed by `region.open` with a `registerDisposer` beside it.
+- `docs/superpowers/specs/2026-08-18-component-params-design.md` - the agreed design. This plan implements it; where they disagree, the spec wins.
+- `src/handlers.js` lines 24-64 - the binding handler contract.
+- `src/reconciler.js` lines 380-408 - `createEachHandler` / `registerEachHandler`, the seam this copies.
+- `src/reconciler.js` lines 302-330 - `reconcile`, for how per-region state is held in a `WeakMap` keyed by `region.open` with a `registerDisposer` beside it.
 
 ## File structure
 
@@ -27,7 +27,7 @@
 | `src/components.test.js` | **create** | Everything in the spec's test list. |
 | `src/context.js` | modify | `$component` added to `CONTEXT_KEYS`, inherited by `createChildContext`, plus `createComponentContext`. |
 | `src/context.test.js` | modify | Inheritance and null-outside-a-component. |
-| `src/template-compiler.js` | modify | `componentFactory()` — a template *string* to a cloneable factory — and the `registerComponentHandler` call that hands it over. |
+| `src/template-compiler.js` | modify | `componentFactory()` - a template *string* to a cloneable factory - and the `registerComponentHandler` call that hands it over. |
 | `src/reconciler.js` | modify | `createInstance` gains an options argument so a caller can supply the context. |
 | `src/index.js` | modify | Export `registerComponent`, `unregisterComponent`. |
 | `scripts/verify-dist.mjs` | modify | `EXPECTED` grows from 31 to 33. |
@@ -40,7 +40,7 @@
 Follow these or the review will bounce it:
 
 - **Nothing throws at render time.** Every failure logs exactly one warning naming the expression and the template, and skips that binding alone. Use `warnOnce(key, message)` with a key that includes `binding.id`.
-- **Registration functions throw** on a bad name — see `registerExtender`. That asymmetry is deliberate: a bad registration is a programming error at startup, a bad expression is authored data at runtime.
+- **Registration functions throw** on a bad name - see `registerExtender`. That asymmetry is deliberate: a bad registration is a programming error at startup, a bad expression is authored data at runtime.
 - **British English** in prose and comments.
 - **Module header comments explain *why*.** Every file in `src/` opens with one. Match the register.
 - Run `npm run test:run` before every commit.
@@ -96,7 +96,7 @@ Add `createComponentContext` and `CONTEXT_KEYS` to the import at the top of the 
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/context.test.js`
-Expected: FAIL — `createComponentContext is not a function`.
+Expected: FAIL - `createComponentContext is not a function`.
 
 - [ ] **Step 3: Implement**
 
@@ -119,7 +119,7 @@ Then add, after `createChildContext`:
  * The context inside a component's template.
  *
  * `$data` is the view model, so a template reads its own state unqualified, and
- * `$component` is the same object — the point of the name is that it survives
+ * `$component` is the same object - the point of the name is that it survives
  * into nested blocks, where `$data` no longer refers to the component. It is
  * inherited by `createChildContext` for exactly that reason, as `$root` is.
  *
@@ -146,7 +146,7 @@ export function createComponentContext(parent, viewModel) {
 - [ ] **Step 4: Run the whole suite**
 
 Run: `npm run test:run`
-Expected: PASS. 807 existing plus 5 new. If any existing context test asserts an exact object shape it will fail on the new key — update it; the addition is intended.
+Expected: PASS. 807 existing plus 5 new. If any existing context test asserts an exact object shape it will fail on the new key - update it; the addition is intended.
 
 - [ ] **Step 5: Commit**
 
@@ -155,7 +155,7 @@ git add src/context.js src/context.test.js
 git commit -m "feat: add \$component to the binding context
 
 Inherited by child contexts as \$root is, so it still answers inside a list
-nested in a component's template — which is the only reason the name exists,
+nested in a component's template - which is the only reason the name exists,
 since \$data already reaches the view model at the top level.
 
 context.js predicted this: an additive field, and nothing else changes."
@@ -231,11 +231,11 @@ describe('unregisterComponent', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/components.test.js`
-Expected: FAIL — cannot resolve `./components.js`.
+Expected: FAIL - cannot resolve `./components.js`.
 
 - [ ] **Step 3: Implement**
 
-Create `src/components.js`. Open it with a header explaining why the module exists and why it does not import the template compiler — copy the register of the other headers, and say plainly that it takes its factory-builder by injection so `template-compiler.js` can depend on it rather than the reverse.
+Create `src/components.js`. Open it with a header explaining why the module exists and why it does not import the template compiler - copy the register of the other headers, and say plainly that it takes its factory-builder by injection so `template-compiler.js` can depend on it rather than the reverse.
 
 ```javascript
 const PREFIX = '[Domma Reactive]';
@@ -428,7 +428,7 @@ describe('collectParams', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/components.test.js`
-Expected: FAIL — `collectParams is not a function`.
+Expected: FAIL - `collectParams is not a function`.
 
 - [ ] **Step 3: Implement**
 
@@ -471,13 +471,13 @@ export function paramName(suffix) {
 /**
  * The params object for one component instance.
  *
- * Evaluated once, here, at instantiation — a constructor argument rather than a
+ * Evaluated once, here, at instantiation - a constructor argument rather than a
  * live binding. An observable passed as `data-param-x="thing"` stays live because
  * the object itself is what was passed; `data-param-x="thing.value"` is a
  * snapshot. That distinction needs no code: it is the same `.value` the author
  * already reads through, and it is visible in the markup.
  *
- * Frozen, because it is an input rather than scratch space — the same reasoning
+ * Frozen, because it is an input rather than scratch space - the same reasoning
  * that freezes a binding context. Observables inside it stay writable through
  * `.value`, which is the intended path back to the parent.
  *
@@ -502,7 +502,7 @@ export function collectParams(element, binding, context) {
         } else if (value === null || typeof value !== 'object') {
             warnOnce(
                 `component:params:${binding.id}`,
-                `data-params="${bag}" needs an object of params — got ` +
+                `data-params="${bag}" needs an object of params - got ` +
                 `${value === null ? 'null' : typeof value}, in ${binding.expr}`
             );
         } else {
@@ -545,7 +545,7 @@ export function collectParams(element, binding, context) {
 Run: `npx vitest run src/components.test.js`
 Expected: PASS.
 
-Note on the merge-warning test: the collision warning fires only when the object form supplied the key first, which is why the loop checks `key in params` *before* assigning. If the test fails because no warning fired, check the attribute order — `data-params` must be read before the loop, not inside it.
+Note on the merge-warning test: the collision warning fires only when the object form supplied the key first, which is why the loop checks `key in params` *before* assigning. If the test fails because no warning fired, check the attribute order - `data-params` must be read before the loop, not inside it.
 
 - [ ] **Step 5: Commit**
 
@@ -554,7 +554,7 @@ git add src/components.js src/components.test.js
 git commit -m "feat: collect component params from both spellings
 
 data-param-<name> per param, data-params for an object the view model already
-holds — the pair data-bind-style established and data-options-* followed.
+holds - the pair data-bind-style established and data-options-* followed.
 
 By-reference versus by-value needs no rule: data-param-x=\"thing\" passes the
 observable and data-param-x=\"thing.value\" passes a snapshot, which is the
@@ -599,7 +599,7 @@ Import `componentFactory` from `./template-compiler.js` and `render` from `./ren
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/template-compiler.test.js`
-Expected: FAIL — `componentFactory is not a function`.
+Expected: FAIL - `componentFactory is not a function`.
 
 - [ ] **Step 3: Implement**
 
@@ -649,7 +649,7 @@ function buildFactory(binding, render, options) {
 
     if (PARTIAL.test(binding.body)) {
         console.warn(
-            `${PREFIX} {{> partial}} inside a keyed {{#each}} is not expanded — ` +
+            `${PREFIX} {{> partial}} inside a keyed {{#each}} is not expanded - ` +
             `the block body is compiled once into a <template>, before any render ` +
             `pass exists to resolve a partial against. Inline it, in ${label}`
         );
@@ -661,7 +661,7 @@ function buildFactory(binding, render, options) {
 /**
  * A component's template, compiled once and cloned per instance.
  *
- * Same machinery as a keyed block body, and for the same reason — an instance
+ * Same machinery as a keyed block body, and for the same reason - an instance
  * owns its effects, so it needs its own copy of the binding records.
  *
  * @param {string} source
@@ -675,7 +675,7 @@ export function componentFactory(source, label, render, options) {
 }
 ```
 
-Preserve `usesLength`'s original meaning if the existing code computed it differently — read the lines after the current `return {` in `buildFactory` before replacing them, and keep that expression rather than the one above if it differs.
+Preserve `usesLength`'s original meaning if the existing code computed it differently - read the lines after the current `return {` in `buildFactory` before replacing them, and keep that expression rather than the one above if it differs.
 
 - [ ] **Step 4: Run the whole suite**
 
@@ -688,7 +688,7 @@ Expected: PASS. The `each` tests exercise `buildFactory` heavily; if any fail, t
 git add src/template-compiler.js src/template-compiler.test.js
 git commit -m "refactor: share one factory builder between each-bodies and components
 
-A component template needs exactly what a keyed block body needs — annotate,
+A component template needs exactly what a keyed block body needs - annotate,
 skeletonise, parse to a fragment, one set of binding records per instance. The
 two entry points now differ only in their source, their label and their id
 prefix."
@@ -732,7 +732,7 @@ it('uses a caller-supplied context when one is given', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/reconciler.test.js`
-Expected: FAIL — `$component` is `null`, because the supplied context was ignored.
+Expected: FAIL - `$component` is `null`, because the supplied context was ignored.
 
 - [ ] **Step 3: Implement**
 
@@ -774,7 +774,7 @@ resolves against. One optional argument, and lists are untouched."
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `src/components.test.js`. Add a `mount` helper first — every remaining test uses it:
+Append to `src/components.test.js`. Add a `mount` helper first - every remaining test uses it:
 
 ```javascript
 import {compile} from './template-compiler.js';
@@ -850,7 +850,7 @@ describe('mounting', () => {
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/components.test.js`
-Expected: FAIL — nothing renders; there is no `component` binding kind yet.
+Expected: FAIL - nothing renders; there is no `component` binding kind yet.
 
 - [ ] **Step 3: Implement the handler**
 
@@ -870,7 +870,7 @@ const states = new WeakMap();
  *
  * A template-only component reads its params unqualified, which is what makes
  * the trivial case trivial. Anything that throws in `create` takes that instance
- * and nothing else — one warning, an empty host, and the rest of the page
+ * and nothing else - one warning, an empty host, and the rest of the page
  * carries on.
  */
 function buildViewModel(definition, params, element, binding, name) {
@@ -913,7 +913,7 @@ function teardown(state) {
  *
  * `data-if` is, and the difference is worth stating. The compiler anchors an
  * attribute region around the WHOLE element (`scanRegionElements` takes
- * `elementRange`), so a region handler re-renders the element it is written on —
+ * `elementRange`), so a region handler re-renders the element it is written on -
  * which would put this binding's own `data-param-*` attributes inside the region
  * it replaces, and there would be no element left to read them from. A region is
  * `{open, close}` and carries no element reference; see nodes.js.
@@ -961,7 +961,7 @@ export function createComponentHandler(factoryFor) {
                 if (typeof name !== 'string' || name === '') {
                     warnOnce(
                         `component:name:${binding.id}`,
-                        `data-component="${binding.expr}" needs a component name — got ` +
+                        `data-component="${binding.expr}" needs a component name - got ` +
                         `${name === null ? 'null' : typeof name}. Remember that a literal name ` +
                         `takes quotes, because every binding value is an expression: ` +
                         `data-component="'my-thing'"`
@@ -1143,7 +1143,7 @@ Import `observableArray` at the top of the file.
 - [ ] **Step 2: Run**
 
 Run: `npx vitest run src/components.test.js`
-Expected: the swap and no-rebuild tests should pass from Task 6's implementation. If `liveDisposers()` does not return to baseline, the `registerDisposer` on `region.open` is not being run — check that `teardown` is registered once per region and that `controller.destroy()` reaches `disposeSubtree`.
+Expected: the swap and no-rebuild tests should pass from Task 6's implementation. If `liveDisposers()` does not return to baseline, the `registerDisposer` on `region.open` is not being run - check that `teardown` is registered once per region and that `controller.destroy()` reaches `disposeSubtree`.
 
 - [ ] **Step 3: Fix whatever failed, then run the whole suite**
 
@@ -1156,7 +1156,7 @@ Expected: PASS.
 git add src/components.test.js src/components.js
 git commit -m "test: component disposal, swapping and leak checks
 
-liveDisposers() returning to baseline is the test that matters — a component
+liveDisposers() returning to baseline is the test that matters - a component
 model that leaks effects when its region closes is worse than no component
 model, and the DOM looks correct either way."
 ```
@@ -1227,7 +1227,7 @@ describe('failure is never fatal', () => {
 
 Run: `npx vitest run src/components.test.js`
 
-The final test will fail: nothing currently notices `data-param-*` on an element with no `data-component`. Add a compile-time check. The cheapest correct place is `annotate` in `template-compiler.js`, where every attribute is already being walked — when an element carries a `data-param-` attribute and no `data-component`, warn once naming the attribute and the template.
+The final test will fail: nothing currently notices `data-param-*` on an element with no `data-component`. Add a compile-time check. The cheapest correct place is `annotate` in `template-compiler.js`, where every attribute is already being walked - when an element carries a `data-param-` attribute and no `data-component`, warn once naming the attribute and the template.
 
 - [ ] **Step 3: Run the whole suite**
 
@@ -1274,7 +1274,7 @@ import {registerComponent, unregisterComponent} from './components.js';
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/index.test.js`
-Expected: FAIL — the names are not exported.
+Expected: FAIL - the names are not exported.
 
 - [ ] **Step 3: Implement**
 
@@ -1289,7 +1289,7 @@ In `scripts/verify-dist.mjs`, add both names to `EXPECTED`.
 - [ ] **Step 4: Verify through all three module systems**
 
 Run: `npm run test:dist`
-Expected: PASS — build, then all 33 exports resolving through `require()`, `import()` and `<script>`.
+Expected: PASS - build, then all 33 exports resolving through `require()`, `import()` and `<script>`.
 
 - [ ] **Step 5: Commit**
 
@@ -1323,7 +1323,7 @@ stat -c%s dist/domma-reactive.min.js dist/domma-reactive.esm.js
 
 Record the three numbers. They go into the README in Task 11, and the last time they were left stale they drifted twenty per cent.
 
-- [ ] **Step 3: Commit nothing** — this task produces figures, not changes.
+- [ ] **Step 3: Commit nothing** - this task produces figures, not changes.
 
 ---
 
@@ -1334,17 +1334,17 @@ Record the three numbers. They go into the README in Task 11, and the last time 
 
 - [ ] **Step 1: Write the `## Components` section**
 
-Place it after `## Keyed lists`. Cover, with runnable examples: `registerComponent` and both definition shapes; both param spellings and the merge rule; the by-reference table from the spec; `$component`; dynamic names and swapping; disposal; and the failure table. Match the surrounding prose — explain *why*, not only *what*.
+Place it after `## Keyed lists`. Cover, with runnable examples: `registerComponent` and both definition shapes; both param spellings and the merge rule; the by-reference table from the spec; `$component`; dynamic names and swapping; disposal; and the failure table. Match the surrounding prose - explain *why*, not only *what*.
 
 - [ ] **Step 2: Update everything that referred to components as absent**
 
-- `## Contents` — add Components.
-- The migration table — `component:` / `ko.components` moves from **not yet** to the real spelling. `$parents[2]` stays **not yet**.
-- `## Limits and non-goals` — components come out of the two-gaps paragraph, leaving `$parents[n]`. Add slots as the remaining component gap, with the `buildFactory` compile-once reasoning already written in the spec.
-- `## What it does` — add a components item, with a line of proof like the other seven.
-- `## What it isn't` — remove "no component model" from the list. It was flagged when that section was written as the first thing needing revisiting if components landed.
-- The API reference — add both names, and change "Thirty-one names" to "Thirty-three names".
-- The install table and the opening size line — the three figures from Task 10.
+- `## Contents` - add Components.
+- The migration table - `component:` / `ko.components` moves from **not yet** to the real spelling. `$parents[2]` stays **not yet**.
+- `## Limits and non-goals` - components come out of the two-gaps paragraph, leaving `$parents[n]`. Add slots as the remaining component gap, with the `buildFactory` compile-once reasoning already written in the spec.
+- `## What it does` - add a components item, with a line of proof like the other seven.
+- `## What it isn't` - remove "no component model" from the list. It was flagged when that section was written as the first thing needing revisiting if components landed.
+- The API reference - add both names, and change "Thirty-one names" to "Thirty-three names".
+- The install table and the opening size line - the three figures from Task 10.
 
 - [ ] **Step 3: Check every anchor still resolves**
 
@@ -1380,11 +1380,11 @@ In `src/tutorial.test.js`, extend `MARKUP` and the view model with a `contact-ca
 - [ ] **Step 2: Run and watch it fail**
 
 Run: `npx vitest run src/tutorial.test.js`
-Expected: FAIL — the component is not registered by the tutorial's `app.js` yet.
+Expected: FAIL - the component is not registered by the tutorial's `app.js` yet.
 
 - [ ] **Step 3: Write the tutorial step**
 
-A new `## Step 11 — make the row a component`, in the voice of the existing steps, with a `### What just happened`. The row is the right demonstration: it already has an item context, a two-way `data-model`, and an edit-in-place flag that wants to be private to the row rather than held on the list — which is the argument for a component making itself.
+A new `## Step 11 - make the row a component`, in the voice of the existing steps, with a `### What just happened`. The row is the right demonstration: it already has an item context, a two-way `data-model`, and an edit-in-place flag that wants to be private to the row rather than held on the list - which is the argument for a component making itself.
 
 Update `## The finished files` so both listings match the test exactly.
 
@@ -1426,7 +1426,7 @@ Expected: `0.6.x → 0.7.0  (package.json, package-lock.json)`. It deliberately 
 
 - [ ] **Step 2: Write the changelog entry**
 
-`## [0.7.0] - YYYY-MM-DD` at the top of `CHANGELOG.md`, in the shape of the existing entries —
+`## [0.7.0] - YYYY-MM-DD` at the top of `CHANGELOG.md`, in the shape of the existing entries -
 `### Added` / `### Changed`, prose that says why rather than only what. Cover `registerComponent`
 and `unregisterComponent`, `data-component`, both param spellings and the merge rule, by-reference
 versus by-value, `$component`, dynamic names and swapping, view-model `dispose()`, and the two
@@ -1436,7 +1436,7 @@ things still missing: slots and (if it has not shipped) `$parents[n]`.
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md
-git commit -m "Release 0.7.0 — components"
+git commit -m "Release 0.7.0 - components"
 ```
 
 The message should say what the release contains. A Makefile cannot write that, which is why
@@ -1449,7 +1449,7 @@ make preflight
 ```
 
 Expected: `preflight: clean, not behind origin, 0.7.0 unpublished, artefacts verified`, and
-`all 33 exports verified across require(), import() and <script>`. Thirty-three, not thirty-one —
+`all 33 exports verified across require(), import() and <script>`. Thirty-three, not thirty-one -
 Task 9 added two. If it still says 31, `EXPECTED` in `scripts/verify-dist.mjs` was not updated.
 
 - [ ] **Step 5: Re-measure the bundle and correct the README if it moved**
@@ -1459,12 +1459,12 @@ gzip -c dist/domma-reactive.min.js | wc -c
 stat -c%s dist/domma-reactive.min.js dist/domma-reactive.esm.js
 ```
 
-Components will grow the bundle. Nothing in the build asserts these figures — that is exactly how
-they drifted 20% stale between 0.5.0 and 0.5.2 — so compare against the README's opening line and
+Components will grow the bundle. Nothing in the build asserts these figures - that is exactly how
+they drifted 20% stale between 0.5.0 and 0.5.2 - so compare against the README's opening line and
 its install table, and correct both if the rounded numbers changed. If they did, amend the release
 commit rather than adding a second one, and run `make preflight` again.
 
-- [ ] **Step 6: Publish, then tag — but ask first**
+- [ ] **Step 6: Publish, then tag - but ask first**
 
 ```bash
 make release-npm    # publishes to npm; irreversible
@@ -1487,6 +1487,6 @@ Makefile's help text says the same.
 
 Per the spec, and each already documented as a gap:
 
-- `$componentTemplateNodes` — slots and transclusion.
+- `$componentTemplateNodes` - slots and transclusion.
 - Async or AMD template loading.
 - `$parents[n]`.

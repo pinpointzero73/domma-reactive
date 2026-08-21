@@ -106,7 +106,7 @@ describe('observableArray', () => {
 
     // ── Beyond the plan's nine ────────────────────────────────────────────────
 
-    it('mutators notify even when the contents did not change — the accepted cost', async () => {
+    it('mutators notify even when the contents did not change - the accepted cost', async () => {
         // The deliberate trade-off of triggering directly instead of comparing:
         // the mutator knows it was called, not whether it achieved anything.
         const items = observableArray([1, 2]);
@@ -210,7 +210,7 @@ describe('observableArray', () => {
 // ── remove(): a value, or a test ──────────────────────────────────────────────
 //
 // `remove(item)` matches by identity, which is right and is what a reconciled
-// list wants — `$parent.remove($data)` hands over the very object the row was
+// list wants - `$parent.remove($data)` hands over the very object the row was
 // rendered from. But the other spelling is the one people reach for first, and
 // it used to fail SILENTLY: a function was compared against each item by
 // identity, never matched, and removed nothing without a word.

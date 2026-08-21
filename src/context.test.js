@@ -1,7 +1,7 @@
 /**
  * Binding context.
  *
- * Small module, short suite — but the two assertions that matter are easy to
+ * Small module, short suite - but the two assertions that matter are easy to
  * write wrong: that $root survives arbitrary nesting, and that the four names
  * resolve OUTSIDE a block as well as inside one, which is the sentence in
  * design spec §5 most likely to be quietly dropped.
@@ -77,7 +77,7 @@ describe('createChildContext', () => {
 
     it('defaults $index to null rather than undefined', () => {
         // {{#with}} shifts context without an index, and `$index` must still
-        // resolve — to null, the documented "not in a list" value.
+        // resolve - to null, the documented "not in a list" value.
         expect(createChildContext({}, {}).$index).toBeNull();
         expect(createChildContext({}, {}, undefined).$index).toBeNull();
         expect(createChildContext({}, {}, 0).$index).toBe(0);
@@ -134,7 +134,7 @@ describe('§5: the four names resolve outside a block too', () => {
         expect(evaluateExpression('$root.title', child)).toBe('People');
     });
 
-    it('does not walk the scope chain — a name means $data or nothing', () => {
+    it('does not walk the scope chain - a name means $data or nothing', () => {
         const child = createChildContext({title: 'People'}, {name: 'Ada'}, 0);
 
         // `title` lives on the parent. Resolving it silently would make the
@@ -231,7 +231,7 @@ describe('$parents', () => {
         expect(Object.isFrozen(createRootContext({}).$parents)).toBe(true);
     });
 
-    it('is memoised — the same context returns the same array', () => {
+    it('is memoised - the same context returns the same array', () => {
         const child = createChildContext(createRootContext({}), {});
         expect(child.$parents).toBe(child.$parents);
     });
@@ -242,7 +242,7 @@ describe('$parents', () => {
             .not.toBe(createChildContext(root, {n: 'b'}).$parents);
     });
 
-    it('is lazy — a getter, not an eager field', () => {
+    it('is lazy - a getter, not an eager field', () => {
         const child = createChildContext(createRootContext({}), {});
         const descriptor = Object.getOwnPropertyDescriptor(child, '$parents');
 

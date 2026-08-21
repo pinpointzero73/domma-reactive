@@ -1,9 +1,9 @@
 /**
- * A minimal mustache renderer — TEST SUPPORT ONLY. Not exported by the package.
+ * A minimal mustache renderer - TEST SUPPORT ONLY. Not exported by the package.
  *
  * `compile()` takes its renderer as an OPTIONAL parameter. The package now has
  * a default of its own (render.js), but the parameter is the contract Domma
- * relies on — it injects `utils.render` — so the compiler's tests must exercise
+ * relies on - it injects `utils.render` - so the compiler's tests must exercise
  * the INJECTED path, not the default. That is what this file is for.
  *
  * Importing Domma's renderer would invert the dependency: the package's suite
@@ -22,13 +22,13 @@
  * that is a signal the test has drifted from what the compiler contracts for.
  */
 
-/** {{#kind expr}} — a block opener. */
+/** {{#kind expr}} - a block opener. */
 const OPEN = /\{\{#(if|unless|each|with)\s+([^}]+?)\s*\}\}/;
 
 /** {{{x}}} */
 const TRIPLE = /\{\{\{\s*([^{}]+?)\s*\}\}\}/g;
 
-/** {{x}} — not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
+/** {{x}} - not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
 const INTERP = /\{\{(?!\{)\s*([^#/>!{}][^{}]*?)\s*\}\}/g;
 
 const ESCAPES = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};

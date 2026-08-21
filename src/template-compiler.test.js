@@ -1,13 +1,13 @@
 // src/template-compiler.test.js
 //
 // Tier 3: fine-grained bindings. A structural change must re-render only its
-// own block — everything else keeps its DOM node identity.
+// own block - everything else keeps its DOM node identity.
 //
 // ── On the renderer ──────────────────────────────────────────────────────────
 // `compile()` takes the mustache renderer as a parameter; this package does not
 // own one. In Domma the injected function is `utils.render`. Importing Domma
 // here would make the package's own suite depend on its consumer, so these
-// tests inject `render` from ./support/mini-render.js — a deliberately minimal
+// tests inject `render` from ./support/mini-render.js - a deliberately minimal
 // stand-in supporting only the subset the compiler exercises: interpolation,
 // triple-stache, {{#if}}, {{#unless}}, {{#each}}, {{#with}} and {{.}}.
 //
@@ -40,7 +40,7 @@ describe('template-compiler - annotation', () => {
     });
 
     it('does not bind interpolations inside context-shifting blocks', () => {
-        // {{label}} resolves against the item, not the root — binding it to a
+        // {{label}} resolves against the item, not the root - binding it to a
         // root field would resolve the wrong value.
         const {bindings} = annotate('{{#each items}}<li>{{label}}</li>{{/each}}{{count}}');
 
@@ -274,7 +274,7 @@ describe('template-compiler - the TemplateCompiler namespace', () => {
         expect(TemplateCompiler.annotate).toBe(annotate);
         expect(TemplateCompiler.compile).toBe(compile);
         expect(TemplateCompiler.scanBlocks).toBe(scanBlocks);
-        // resolvePath is reachable ONLY through this object — there is no
+        // resolvePath is reachable ONLY through this object - there is no
         // named export for it. If that ever changes, this test should too.
         expect(typeof TemplateCompiler.resolvePath).toBe('function');
     });
@@ -298,7 +298,7 @@ describe('template-compiler - the renderer is optional', () => {
         document.body.appendChild(host);
     });
 
-    it('renders with three arguments — the standalone case', () => {
+    it('renders with three arguments - the standalone case', () => {
         // Before M3 this threw "renderFn is not a function", which made the
         // published package unusable without bringing your own engine.
         expect(() => compile('<p>{{name}}</p>', {name: 'Ada'}, host)).not.toThrow();
@@ -365,7 +365,7 @@ describe('template-compiler - expressions in {{ }}', () => {
     });
 
     it('is correct on first paint even when the renderer cannot evaluate it', () => {
-        // A renderer that only substitutes paths — which is what Domma's does —
+        // A renderer that only substitutes paths - which is what Domma's does -
         // leaves an expression interpolation blank. `prime` is what fixes that,
         // and this asserts the rendered text rather than the binding's state.
         const pathsOnly = (tmpl, data) =>
@@ -394,7 +394,7 @@ describe('template-compiler - expressions in {{ }}', () => {
 
         expect(bindings.filter(b => b.kind === 'text')).toHaveLength(0);
         // One from the expression parser, one from the compiler naming the
-        // template — and neither repeated for the second occurrence.
+        // template - and neither repeated for the second occurrence.
         expect(warn.mock.calls.filter(c => /is not bound/.test(c[0]))).toHaveLength(1);
 
         warn.mockRestore();

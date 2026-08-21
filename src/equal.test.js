@@ -52,7 +52,7 @@ describe('isEqual', () => {
     });
 
     it('treats two invalid dates as equal', () => {
-        // Both getTime() values are NaN — the same "must not fire forever"
+        // Both getTime() values are NaN - the same "must not fire forever"
         // rationale as the NaN case above
         expect(isEqual(new Date('nonsense'), new Date('nonsense'))).toBe(true);
         expect(isEqual(new Date('nonsense'), new Date('2026-01-01'))).toBe(false);

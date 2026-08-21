@@ -102,7 +102,7 @@ const EACH_VALUE = /^([\s\S]*?)\s+key\s*=\s*([A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*$/
  * give it. Wrapping them in a `<div>` to carry the attribute changes the layout,
  * and inside a table it is not even valid HTML that a browser will keep.
  *
- * `compile()` has never needed this — `{{#if}}` already delimits a region with
+ * `compile()` has never needed this - `{{#if}}` already delimits a region with
  * comments of its own. This is for markup that arrived from a server, where the
  * author cannot add mustache and has only comments to work with.
  */
@@ -161,7 +161,7 @@ function walk(root, onElement) {
  * Pairing is per parent and stack-based, so a nested pair binds to its own
  * closer rather than to the first one that comes along. The result is in
  * document order of the OPENING comment, which puts an enclosing block before
- * the blocks inside it — the order they have to be wired in, since wiring the
+ * the blocks inside it - the order they have to be wired in, since wiring the
  * outer one may detach the inner one's anchors.
  *
  * @param {Element} root
@@ -268,7 +268,7 @@ export function applyBindings(data, rootElement, options = {}) {
     //
     // Before the element walk, because a virtual list's body is lifted out of
     // the document here. Leaving it in place would have the walk below bind the
-    // TEMPLATE — the same rule `data-each` follows by not descending into its
+    // TEMPLATE - the same rule `data-each` follows by not descending into its
     // own element.
     const virtual = virtualBlocks(rootElement, (orphan) => {
         warnOnce(
@@ -532,8 +532,8 @@ export function applyBindings(data, rootElement, options = {}) {
         for (const node of rangeNodes(block.open, block.close)) holder.appendChild(node);
         block.body = holder.innerHTML;
 
-        // A virtual block inside this body went with it. It cannot be wired —
-        // its anchors are no longer in the document — and the compiler does not
+        // A virtual block inside this body went with it. It cannot be wired -
+        // its anchors are no longer in the document - and the compiler does not
         // read `<!-- dm -->` out of a lifted template, so it is not silently
         // handled elsewhere either.
         for (const other of all) {
@@ -542,7 +542,7 @@ export function applyBindings(data, rootElement, options = {}) {
             warnOnce(
                 `virtual:nested:${label}:${other.kind}`,
                 `<!-- dm ${other.kind}: ${other.expr} --> is inside a virtual list's body, ` +
-                'which is compiled as a template — virtual bindings are not read there. ' +
+                'which is compiled as a template - virtual bindings are not read there. ' +
                 `Use {{#${other.kind}}} inside the body, or data-if on an element.`
             );
         }
@@ -670,8 +670,8 @@ export function applyBindings(data, rootElement, options = {}) {
     /**
      * A virtual `text`: one text node between the anchors, owned by the binding.
      *
-     * Whatever the server put there is placeholder content — it is what the page
-     * showed before the data arrived — so it is replaced rather than appended to.
+     * Whatever the server put there is placeholder content - it is what the page
+     * showed before the data arrived - so it is replaced rather than appended to.
      */
     function wireVirtualText(block) {
         const prepared = prepare(block.expr, {expression: true, tracks: true}, '<!-- dm text -->');
@@ -768,11 +768,11 @@ export function applyBindings(data, rootElement, options = {}) {
  * something here: they are lifted out of the document, compiled and cloned per
  * item, exactly as `compile()` would. Warning about them told the author to
  * replace working markup with `data-bind-text`, which is the opposite of the
- * advice — so the check has to stop at a list boundary rather than walk through
+ * advice - so the check has to stop at a list boundary rather than walk through
  * it.
  *
- * The walk stops AT `root`, inclusive — a root that is itself a list holds
- * nothing but an item template — and goes no further: a `data-each` ancestor
+ * The walk stops AT `root`, inclusive - a root that is itself a list holds
+ * nothing but an item template - and goes no further: a `data-each` ancestor
  * above the root is somebody else's list and not ours to reason about.
  *
  * @param {Node}    node

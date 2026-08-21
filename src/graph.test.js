@@ -131,7 +131,7 @@ describe('reactive graph - dependency tracking', () => {
     });
 
     it('settles a diamond dependency without a stale read', async () => {
-        // D reads A directly and via B — B must settle before D's final value.
+        // D reads A directly and via B - B must settle before D's final value.
         const model = bag({a: 1});
         const b = computed(() => model.get('a') + 10);
         const seen = [];
@@ -204,8 +204,8 @@ describe('reactive graph - trackingProxy', () => {
 
     it('returns nested objects unwrapped, so tracking stops at one level', () => {
         // The mechanism behind one-level-deep tracking: `get` hands back the
-        // raw value. Any recursive variant — whatever keyspace it tracked
-        // nested reads under — would return a fresh Proxy here instead.
+        // raw value. Any recursive variant - whatever keyspace it tracked
+        // nested reads under - would return a fresh Proxy here instead.
         const deps = new DepMap();
         const nested = {name: 'Ada'};
         const state = trackingProxy({user: nested}, (k) => deps.for(k));
@@ -217,7 +217,7 @@ describe('reactive graph - trackingProxy', () => {
         // 'name' is both a nested key of 'user' and a top-level field, so the
         // two would collide if a nested read leaked into the same keyspace.
         // Triggering 'name' below reaches a Dep that only has a subscriber if
-        // that leak happened — DepMap.trigger looks up the Dep, not the datum.
+        // that leak happened - DepMap.trigger looks up the Dep, not the datum.
         const model = bag({user: {name: 'Ada'}, name: 'top-level namesake'});
         const state = model.proxy();
         const body = vi.fn(() => state.user.name);
@@ -326,7 +326,7 @@ describe('reactive graph - propagation policy', () => {
 
         model.set('n', 5);
         await tick();
-        expect(body).toHaveBeenCalledTimes(1);   // nothing reads it — stays lazy
+        expect(body).toHaveBeenCalledTimes(1);   // nothing reads it - stays lazy
 
         expect(derived.get()).toBe(10);          // the next read pays for it
         expect(body).toHaveBeenCalledTimes(2);
@@ -466,7 +466,7 @@ describe('reactive graph - error handling', () => {
 // `computed()` returns a Computation, whose canonical read is `get()`. A
 // TEMPLATE cannot call it: the expression evaluator refuses method calls,
 // deliberately, because a call inside a render is a side effect. So a computed
-// was unreadable from a binding — `{{total.get()}}` will not parse, and
+// was unreadable from a binding - `{{total.get()}}` will not parse, and
 // `{{total.value}}` used to reach a plain cached FIELD that neither recomputed
 // nor registered a dependency, which is worse than unreadable because it renders
 // a stale number once and then never changes.
@@ -519,7 +519,7 @@ describe('computed().value', () => {
 // A computed derives a value, so writing to one is only meaningful if the author
 // says where the write should land. `computed({read, write})` is that statement.
 // Without a `write`, an assignment has nowhere to go and is refused loudly rather
-// than dropped — a two-way binding pointed at a read-only computed would
+// than dropped - a two-way binding pointed at a read-only computed would
 // otherwise look wired up and silently discard every keystroke.
 
 describe('writable computed', () => {

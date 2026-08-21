@@ -3,7 +3,7 @@
  *
  * Dependency tracking with a batched microtask flush.
  *
- * Provides the primitive that lets a computation discover — at runtime — which
+ * Provides the primitive that lets a computation discover - at runtime - which
  * pieces of data it actually read, so that a later write to one of those pieces
  * can invalidate exactly the computations that care, and nothing else. That is
  * a graph walk over real dependencies, rather than the usual fallback of
@@ -17,7 +17,7 @@
  *   - an *effect* produces no value and sits at the leaves of the graph
  *
  * Writes never recompute anything synchronously. They mark computations dirty,
- * queue them, and schedule a single microtask flush — so a burst of writes
+ * queue them, and schedule a single microtask flush - so a burst of writes
  * (setting three fields at once, a rapid sequence of keystrokes) collapses into
  * one propagation pass and, downstream, one render.
  *
@@ -58,8 +58,8 @@ let _flushing       = false;
  *
  * A diagnostic, not a feature: it is how a test proves that churning a keyed
  * list a thousand times leaves the dependency graph exactly the size it started
- * at. A leak here is invisible in the DOM — the markup looks right while the
- * graph grows without bound — so "it renders correctly" is not evidence and this
+ * at. A leak here is invisible in the DOM - the markup looks right while the
+ * graph grows without bound - so "it renders correctly" is not evidence and this
  * number is.
  *
  * Deliberately not re-exported from index.js. It says nothing about bindings or
@@ -76,7 +76,7 @@ export function liveComputations() {
 // ── Dep ───────────────────────────────────────────────────────────────────────
 
 /**
- * A single reactive slot — one data field, or the output of one computed.
+ * A single reactive slot - one data field, or the output of one computed.
  * Holds the set of computations that read it during their last evaluation.
  */
 export class Dep {
@@ -108,7 +108,7 @@ export class Dep {
 // ── DepMap ────────────────────────────────────────────────────────────────────
 
 /**
- * A lazily-populated keyed collection of Deps — one per data field.
+ * A lazily-populated keyed collection of Deps - one per data field.
  * Fields are only allocated a Dep once something actually reads them.
  */
 export class DepMap {
@@ -140,7 +140,7 @@ export class DepMap {
         this._deps.get(key)?.trigger();
     }
 
-    /** Drop every Dep — used when the owning store is destroyed. */
+    /** Drop every Dep - used when the owning store is destroyed. */
     clear() {
         for (const dep of this._deps.values()) dep.subs.clear();
         this._deps.clear();
@@ -222,15 +222,15 @@ export class Computation {
     /**
      * The same read as `get()`, spelled as a property.
      *
-     * Not sugar. A template expression cannot call a method — the evaluator
-     * refuses `x.foo()` because a call inside a render is a side effect — so
+     * Not sugar. A template expression cannot call a method - the evaluator
+     * refuses `x.foo()` because a call inside a render is a side effect - so
      * `{{total.get()}}` does not parse, and without this a computed could not be
      * read from a binding at all. It also makes an observable and a computed
      * spell their read the same way, which is what an author expects of two
      * things the documentation presents side by side.
      *
      * The cached result lives in `_value` rather than `value` precisely so this
-     * getter can exist: a plain `value` field was reachable, stale, and silent —
+     * getter can exist: a plain `value` field was reachable, stale, and silent -
      * it neither recomputed nor registered a dependency, so a binding that read
      * it rendered one wrong number and then never changed again.
      */
@@ -244,7 +244,7 @@ export class Computation {
      * There is nowhere else for it to go: the cached `_value` is an output, and
      * storing into it would produce a value that the next recompute silently
      * discards. So a computed is writable only if its author said where a write
-     * should land — `computed({read, write})` — and read-only otherwise.
+     * should land - `computed({read, write})` - and read-only otherwise.
      *
      * This is what lets `data-model` bind a derived value. Without it the
      * binding would evaluate the computed, find an object, assign `value` onto
@@ -268,7 +268,7 @@ export class Computation {
     write(next) {
         if (!this._write) {
             console.warn(
-                `[Domma Reactive] "${this.label}" is a read-only computed — the assignment ` +
+                `[Domma Reactive] "${this.label}" is a read-only computed - the assignment ` +
                 'was ignored. Pass computed({read, write}) to say where a write should land.'
             );
             return;
@@ -376,7 +376,7 @@ export function flushSync() {
 /**
  * Propagate a batch of invalidations through the dependency graph.
  *
- * `batch` holds the computations that a write touched *directly* — the ones
+ * `batch` holds the computations that a write touched *directly* - the ones
  * whose Deps were triggered this tick. Their dependents are not in the batch;
  * reaching those is this function's job.
  *
@@ -393,7 +393,7 @@ export function flushSync() {
  *   1. Equality short-circuit. A computed that recomputes to an `isEqual` value
  *      does not propagate, so a write that cancels itself out costs nothing
  *      downstream. Note the corollary: a computed that mutates and returns the
- *      same object reference will not propagate — derivations must return new
+ *      same object reference will not propagate - derivations must return new
  *      values, not edit old ones.
  *
  *   2. Cascade via worklist. Changed computeds push their dependents back onto
@@ -405,7 +405,7 @@ export function flushSync() {
  *      cycle from spinning forever.
  *
  *   4. Effects last. Effects drive renders, so they are collected during the
- *      walk and fired only once the value graph has settled — one render per
+ *      walk and fired only once the value graph has settled - one render per
  *      flush, never an intermediate state.
  *
  * @param {Set<Computation>} batch  Directly-invalidated computations.
@@ -426,7 +426,7 @@ export function drainPending(batch) {
         visits.set(comp, seen);
         if (seen > MAX_VISITS) {
             console.warn(
-                `[Domma Reactive] "${comp.label}" re-entered the flush ${MAX_VISITS} times — ` +
+                `[Domma Reactive] "${comp.label}" re-entered the flush ${MAX_VISITS} times - ` +
                 'likely a dependency cycle. Skipping.'
             );
             continue;
@@ -468,11 +468,11 @@ export function drainPending(batch) {
  * unnecessary.
  *
  * @param {Object}   target            Object to wrap (typically a store's data).
- * @param {Function} depFor            (key) => Dep — resolves a field name to its Dep.
+ * @param {Function} depFor            (key) => Dep - resolves a field name to its Dep.
  * @param {Object}   [options]
  * @param {Function} [options.onSet]   (key, value) => void. When supplied, writes
  *                                     are routed here instead of mutating the
- *                                     target directly — letting a host store keep
+ *                                     target directly - letting a host store keep
  *                                     its validation and change-notification path.
  * @returns {Proxy}
  */
@@ -513,7 +513,7 @@ export function trackingProxy(target, depFor, options = {}) {
  * Two forms:
  *
  *   computed(() => a.value + b.value)              read-only
- *   computed({read, write})                        writable — see Computation#write
+ *   computed({read, write})                        writable - see Computation#write
  *
  * The object form is Knockout's, and is kept because the alternative spellings
  * are worse: a second positional function is unreadable at the call site, and
@@ -525,7 +525,7 @@ export function trackingProxy(target, depFor, options = {}) {
  * @param {Function} [options.onNotify]  Called when the derived value changes.
  * @param {Function} [options.write]     Where an assignment should land.
  * @returns {Computation}
- * @throws {TypeError} when the object form has no `read` function — a
+ * @throws {TypeError} when the object form has no `read` function - a
  *                     construction-time programmer error, not a runtime input.
  */
 export function computed(fn, options = {}) {

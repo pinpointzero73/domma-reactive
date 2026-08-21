@@ -15,14 +15,14 @@
  *
  * ── Two update strategies ────────────────────────────────────────────────────
  *
- * `reactive: false` — the runtime writes to the DOM only when told to. Nothing
+ * `reactive: false` - the runtime writes to the DOM only when told to. Nothing
  *   subscribes to anything; `controller.update(id)` is the only way a binding
  *   ever runs. This is the contract Domma depends on: its component factory
  *   wires one `effect` per binding itself, from `binding.deps`, and calls
  *   `update()` inside `untracked()` so the write cannot pollute its own
  *   dependency set. Changing this out from under it would be changing Domma.
  *
- * `reactive: true` — the runtime owns one `Computation` per binding. The effect
+ * `reactive: true` - the runtime owns one `Computation` per binding. The effect
  *   body is the handler's update, so whatever the expression reads is what the
  *   binding depends on, collected at runtime with no `deps` analysis at all.
  *
@@ -35,11 +35,11 @@
  *
  * A region handler's update calls `reindex()`, which primes the bindings the
  * region just revealed. In reactive mode those bindings are primed by creating
- * or recomputing THEIR effects — never by calling the handler inline. That
+ * or recomputing THEIR effects - never by calling the handler inline. That
  * distinction is the whole ballgame: `Computation._run` swaps the active
  * computation for the duration, so a child's reads are attributed to the child.
  * Priming inline would attribute every child's reads to the parent region, and
- * the region would then re-render itself — destroying its children's nodes —
+ * the region would then re-render itself - destroying its children's nodes -
  * every time any of them changed.
  */
 
@@ -82,7 +82,7 @@ export function createRuntime(spec) {
     const byId = new Map(bindings.map((b) => [b.id, b]));
 
     /**
-     * Nodes this binding has already been settled against — attached to, and
+     * Nodes this binding has already been settled against - attached to, and
      * primed on. A WeakSet keyed by node rather than a count, because a region
      * re-render replaces its contents with brand new elements and the binding
      * must treat those as new even though there are the same number of them.
@@ -119,11 +119,11 @@ export function createRuntime(spec) {
 
     /**
      * Attach handlers to nodes not seen before, queue the bindings that must
-     * now be run against them, and — in reactive mode — dispose the effects of
+     * now be run against them, and - in reactive mode - dispose the effects of
      * bindings that have lost their nodes entirely.
      *
      * A region's "node" is a pair of comment anchors rather than an element; the
-     * opening anchor is its identity, and it is never attached to — only
+     * opening anchor is its identity, and it is never attached to - only
      * element-anchored bindings have listeners.
      */
     function collectNewNodes() {
@@ -159,7 +159,7 @@ export function createRuntime(spec) {
     /**
      * Run every binding that the render could not have got right.
      *
-     * A `{{name}}` is already correct after a paint — the renderer substituted
+     * A `{{name}}` is already correct after a paint - the renderer substituted
      * it. `data-bind-text="name"` is not, because there is no token in an
      * attribute for a renderer to substitute. Neither is a binding that has just
      * been REVEALED by a region re-rendering: without this, an
@@ -244,7 +244,7 @@ export function createRuntime(spec) {
         },
 
         /**
-         * The binding context in force — what an event listener resolves
+         * The binding context in force - what an event listener resolves
          * against, and what the last call to update/updateAll/rerenderAll left
          * behind. Handlers reach it through this, never through a captured copy.
          */
@@ -269,7 +269,7 @@ export function createRuntime(spec) {
          *
          * Reactive mode recomputes the effects rather than calling the handlers,
          * so each binding's dependency set is re-collected against whatever it
-         * reads now — which matters, because the context it resolves against may
+         * reads now - which matters, because the context it resolves against may
          * have changed underneath it.
          *
          * @param {Function|null} [filter] (binding) => boolean. The reconciler
@@ -324,7 +324,7 @@ export function createRuntime(spec) {
             for (const b of bindings) controller.update(b.id);
         },
 
-        /** Full re-render — the escape hatch for props changes. */
+        /** Full re-render - the escape hatch for props changes. */
         rerenderAll(fullData) {
             if (fullData !== undefined) context = toContext(fullData);
             repaint?.(context);
@@ -338,11 +338,11 @@ export function createRuntime(spec) {
 
         /**
          * Detach everything this runtime attached, and dispose every effect it
-         * owns — including the effects it does not own directly.
+         * owns - including the effects it does not own directly.
          *
          * Only listeners on nodes still indexed can be removed; nodes discarded
          * by a region re-render were collected along with their listeners long
-         * ago. Effects are unconditional — they are held here by id, not by
+         * ago. Effects are unconditional - they are held here by id, not by
          * node, so none of them can be missed.
          *
          * The `disposeSubtree` sweep is the part that is easy to leave out and
@@ -354,7 +354,7 @@ export function createRuntime(spec) {
          * page.
          *
          * The nodes are left where they are. Destroying a controller means "stop
-         * driving this markup", not "delete it" — the caller owns the container
+         * driving this markup", not "delete it" - the caller owns the container
          * and may well be about to render something else into it.
          */
         destroy() {

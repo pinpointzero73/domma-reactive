@@ -7,17 +7,17 @@
 //
 //   1. It cannot execute arbitrary code. No dynamic code construction in the
 //      source, only registered helpers are callable, and the routes into the
-//      prototype chain are shut — including the one that only exists at
+//      prototype chain are shut - including the one that only exists at
 //      runtime, `a[key]` where key holds '__proto__'.
 //   2. It cannot take a render down. Every malformed input, every hostile
 //      input and every helper that throws yields a warning and `undefined`.
 //   3. It parses what the design spec says it parses, with JavaScript's own
-//      precedence and associativity — because an expression that quietly means
+//      precedence and associativity - because an expression that quietly means
 //      something other than it reads is worse than one that fails.
 //
 // ── On the parse cache ───────────────────────────────────────────────────────
 // The cache is a module global, and a failed parse warns only on a cache MISS
-// (by design — otherwise a broken binding warns once per render forever). Every
+// (by design - otherwise a broken binding warns once per render forever). Every
 // test that asserts on a warning therefore clears the cache first, which the
 // global beforeEach does.
 
@@ -447,7 +447,7 @@ describe('expression - helpers', () => {
         unregisterHelper('inlined');
     });
 
-    // Registration is code, not user input — so it is the one thing here that
+    // Registration is code, not user input - so it is the one thing here that
     // throws rather than warning. A typo'd registry must not fail silently.
     it.each([
         ['a non-function', 'notAFunction', 'nope'],
@@ -501,7 +501,7 @@ describe('expression - binding context', () => {
     ], child);
 
     it('resolves the four names outside a block too, per §5', () => {
-        // "Outside such a block these still resolve — $data and $root are the
+        // "Outside such a block these still resolve - $data and $root are the
         // top-level context, $parent is null, $index is null."
         const data = {x: 1};
         expect(evaluate('$data', data)).toBe(data);
@@ -585,7 +585,7 @@ describe('expression - prototype guard', () => {
 // ── Hostile input: the pollution proof ───────────────────────────────────────
 
 describe('expression - prototype pollution', () => {
-    // A read alone cannot pollute — there is no assignment in the grammar. The
+    // A read alone cannot pollute - there is no assignment in the grammar. The
     // realistic escalation is a MUTATING HELPER: the moment an expression can
     // hand Object.prototype to something like Object.assign, a read becomes a
     // write. Registering `assign` is not contrived; merging is exactly the kind
@@ -593,7 +593,7 @@ describe('expression - prototype pollution', () => {
     //
     // Each case below pollutes Object.prototype if readMember's blocklist is
     // removed, and is inert with it in place. That is verified by mutation, not
-    // asserted on faith — see the report accompanying this milestone.
+    // asserted on faith - see the report accompanying this milestone.
 
     beforeEach(() => {
         registerHelper('assign', (target, source) => Object.assign(target, source));
@@ -1122,7 +1122,7 @@ describe('expression - dependencies', () => {
 // not to have one.
 //
 // An event handler is not a read. It fires on a gesture, outside every effect,
-// and calling a method on your view model is the entire point — `$parent.remove
+// and calling a method on your view model is the entire point - `$parent.remove
 // ($data)` is how a row reaches the list that owns it, and there is no other way
 // to spell it, because a bare name resolves against $data and $data is the row.
 //
@@ -1174,7 +1174,7 @@ describe('method calls, when the caller opts in', () => {
     it('does not let one parse poison the other through the cache', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-        // Strict first, permissive second — the permissive caller must not get
+        // Strict first, permissive second - the permissive caller must not get
         // the cached null, or an event binding would break because some earlier
         // interpolation happened to use the same text.
         expect(parseExpression('a.b()')).toBeNull();

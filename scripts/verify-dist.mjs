@@ -6,22 +6,22 @@
  * `require` condition pointed at a UMD file with a `.js` extension, and because
  * this package declares `"type": "module"`, Node parsed it as ESM. A UMD bundle
  * has no `export` statements, so `require('domma-reactive')` resolved to an
- * *empty namespace object* — no error, no warning, every CommonJS consumer
+ * *empty namespace object* - no error, no warning, every CommonJS consumer
  * silently broken. Nothing in a `src/`-facing suite can see that.
  *
  * So this checks the three consumption routes as the three kinds of consumer,
  * against the real `exports` map:
  *
- *   1. require()  — self-referenced by package name, so the exports map is
+ *   1. require()  - self-referenced by package name, so the exports map is
  *                   exercised rather than bypassed by a direct file path
- *   2. import()   — likewise
- *   3. <script>   — the UMD bundle in a vm context with no `module`/`exports`
+ *   2. import()   - likewise
+ *   3. <script>   - the UMD bundle in a vm context with no `module`/`exports`
  *                   in scope, which is what a browser actually provides
  *
  * Each route must expose the full public surface *and* drive a real chain
  * end to end, because a bundle can export names that do not work. Three chains
  * are driven: the reactive graph, the string-only half of the template compiler
- * (the half that needs no `document` — see assertCompiler), and the expression
+ * (the half that needs no `document` - see assertCompiler), and the expression
  * evaluator, including its prototype guard.
  *
  * The bundles are also scanned for dynamic code construction. src/ is checked
@@ -110,7 +110,7 @@ function assertSurface(api, label) {
     const missing = EXPECTED.filter((name) => api[name] === undefined);
     if (missing.length === EXPECTED.length) {
         throw new Error(
-            `${label}: resolved to an empty namespace — all ${EXPECTED.length} exports missing. ` +
+            `${label}: resolved to an empty namespace - all ${EXPECTED.length} exports missing. ` +
             'A UMD bundle parsed as ESM does exactly this; check the file extension ' +
             'against package.json "type".'
         );
@@ -120,7 +120,7 @@ function assertSurface(api, label) {
     const uncallable = EXPECTED.filter(
         (name) => !(name in NAMESPACES) && typeof api[name] !== 'function'
     );
-    assert(uncallable.length === 0, `${label}: present but not callable — ${uncallable.join(', ')}`);
+    assert(uncallable.length === 0, `${label}: present but not callable - ${uncallable.join(', ')}`);
 
     for (const [name, members] of Object.entries(NAMESPACES)) {
         const ns = api[name];
@@ -136,7 +136,7 @@ function assertSurface(api, label) {
  * Only the string-only half is exercised here. `compile()` needs a `document`
  * (see the DOM note in src/index.js) and none of these three routes has one:
  * Node has no DOM, and the <script> route runs in a bare vm context. That is
- * the correct boundary to test at — if `annotate` had been dropped or mangled
+ * the correct boundary to test at - if `annotate` had been dropped or mangled
  * by the bundler, this catches it; `compile` is covered by the jsdom suite.
  */
 function assertCompiler(api, label) {
@@ -144,7 +144,7 @@ function assertCompiler(api, label) {
 
     assert(
         annotated.includes('data-dm-t="0_txt"'),
-        `${label}: annotate() did not insert a text anchor — got ${annotated}`
+        `${label}: annotate() did not insert a text anchor - got ${annotated}`
     );
     assert(
         bindings.length === 1 && bindings[0].kind === 'text' && bindings[0].expr === 'a',
@@ -164,7 +164,7 @@ function assertCompiler(api, label) {
 
     // A keyed block reaches annotate() without a document, because the block's
     // <template> is built lazily on first render. If that ever stopped being
-    // true, `annotate` would start throwing in Node — silently, for the half of
+    // true, `annotate` would start throwing in Node - silently, for the half of
     // consumers who never call it there, and loudly for the half who do.
     const realWarn = console.warn;
     console.warn = () => {};
@@ -177,7 +177,7 @@ function assertCompiler(api, label) {
 
     assert(
         keyed.bindings.length === 1 && keyed.bindings[0].kind === 'each',
-        `${label}: a keyed {{#each}} did not compile to an 'each' binding — ` +
+        `${label}: a keyed {{#each}} did not compile to an 'each' binding - ` +
         `got ${JSON.stringify(keyed.bindings.map((b) => b.kind))}`
     );
     assert(
@@ -200,7 +200,7 @@ function assertCompiler(api, label) {
 }
 
 /**
- * The expression evaluator survived bundling — including its guard.
+ * The expression evaluator survived bundling - including its guard.
  *
  * A minifier that mangled the blocked-key set, or dropped the `String(key)`
  * coercion, would leave every name present and callable and the package
@@ -242,7 +242,7 @@ function checkExpression(api, label) {
     const hostile = ['x.__proto__', "x['__proto__']", 'x[k]', 'x.constructor'];
     for (const source of hostile) {
         const value = evaluateExpression(source, {x: {}, k: '__proto__'});
-        assert(value === undefined, `${label}: ${source} was not blocked — got ${String(value)}`);
+        assert(value === undefined, `${label}: ${source} was not blocked - got ${String(value)}`);
     }
     assert({}.polluted === undefined, `${label}: Object.prototype was polluted`);
 
@@ -262,7 +262,7 @@ function checkExpression(api, label) {
  * restricted to the string-only half of the compiler: `compile()` needs a
  * `document` and none of these three routes has one. But the DEFAULT RENDERER
  * is pure string work, and so is the registry's attribute-claiming, so both
- * can be exercised here — and both are new enough surface that a bundler
+ * can be exercised here - and both are new enough surface that a bundler
  * dropping one would otherwise show up first in a consumer's project.
  *
  * The renderer is what makes `compile()` work with no renderFn argument, which
@@ -374,7 +374,7 @@ await check('import() through the exports map (ESM consumer)', async () => {
 await check('UMD bundle as a browser <script> (no module/exports in scope)', () => {
     const source = readFileSync(join(root, pkg.browser), 'utf8');
 
-    // A bare context: no `module`, no `exports`, no `define` — exactly what a
+    // A bare context: no `module`, no `exports`, no `define` - exactly what a
     // script tag gets, and the only condition under which UMD takes its
     // global-assignment branch. A `console` IS provided, because every browser
     // has one and the package warns through it; withholding it would make the
@@ -410,7 +410,7 @@ await check('no dynamic code construction in any bundle (CSP: script-src \'self\
     }
 });
 
-// A built file is otherwise anonymous — handed one, there is no way to tell
+// A built file is otherwise anonymous - handed one, there is no way to tell
 // which release it is, and a stale dist/ is indistinguishable from a fresh
 // one. Asserting the banner here is what makes it a fact rather than a
 // decoration: if the version and the artefacts disagree, one of them was not
@@ -420,11 +420,11 @@ await check(`every bundle is stamped v${pkg.version}`, () => {
         const head = readFileSync(join(root, relative), 'utf8').slice(0, 200);
         const stamped = head.match(/domma-reactive v(\d+\.\d+\.\d+)/);
 
-        assert(stamped, `${relative} carries no version banner — rebuild`);
+        assert(stamped, `${relative} carries no version banner - rebuild`);
         assert(
             !stamped || stamped[1] === pkg.version,
             `${relative} is stamped v${stamped && stamped[1]} but package.json says ` +
-            `v${pkg.version} — this dist/ is stale, rebuild before publishing`
+            `v${pkg.version} - this dist/ is stale, rebuild before publishing`
         );
     }
 });

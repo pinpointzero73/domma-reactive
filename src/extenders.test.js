@@ -37,7 +37,7 @@ describe('notify: always', () => {
         const seen = [];
         config.subscribe(v => seen.push(v));
 
-        config.value = {theme: 'dark'};          // deeply equal — normally silent
+        config.value = {theme: 'dark'};          // deeply equal - normally silent
         expect(seen).toHaveLength(0);
 
         config.extend({notify: 'always'});
@@ -61,7 +61,7 @@ describe('notify: always', () => {
         const seen = [];
         user.subscribe(v => seen.push(v));
 
-        user.value = {id: 1, seenAt: 99};        // same id — the comparator says quiet
+        user.value = {id: 1, seenAt: 99};        // same id - the comparator says quiet
         expect(seen).toHaveLength(0);
 
         user.extend({notify: 'always'});
@@ -152,7 +152,7 @@ describe('rateLimit', () => {
         const seen = [];
         count.subscribe(v => seen.push(v));
 
-        count.value = 1;                          // equal — never reaches the limiter
+        count.value = 1;                          // equal - never reaches the limiter
         vi.advanceTimersByTime(100);
         expect(seen).toHaveLength(0);
     });

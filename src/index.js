@@ -1,5 +1,5 @@
 /**
- * domma-reactive — public API.
+ * domma-reactive - public API.
  *
  * Deliberately small. Anything not listed here is an internal detail and may
  * change without a major version bump.
@@ -20,11 +20,11 @@
  *   apply-bindings.js                   createTreeWalker, and clone fragments.
  *   template-compiler.js                NOT DOM-free at `compile()`. `annotate()`
  *                                       and `scanBlocks()` are string-only and
- *                                       still are — a keyed block's `<template>`
+ *                                       still are - a keyed block's `<template>`
  *                                       is built lazily, on first render, so
  *                                       annotating in Node keeps working.
  *
- * Importing this module has no DOM side effects either way — the requirement
+ * Importing this module has no DOM side effects either way - the requirement
  * only bites when a compiler function is actually called. A DOM-free consumer
  * can import `observable`/`computed`/`effect` and never touch a `document`.
  *
@@ -32,7 +32,7 @@
  *
  * `compile(template, data, container, renderFn)` still takes the mustache
  * renderer as a parameter, and a caller who passes one gets exactly that and
- * nothing else — Domma passes `utils.render`. But the parameter is now
+ * nothing else - Domma passes `utils.render`. But the parameter is now
  * OPTIONAL. It used to be mandatory, which meant a consumer who installed this
  * package could not render anything with it until they had brought their own
  * template engine: `compile('<p>{{name}}</p>', data, host)` threw. `render` in
@@ -40,8 +40,8 @@
  * it is exported as `renderTemplate` so it can be used on its own.
  *
  * The separation of concerns is unchanged. The compiler still contributes the
- * anchor and binding machinery — which region of the DOM belongs to which
- * expression, and what re-renders when — and templating is still a replaceable
+ * anchor and binding machinery - which region of the DOM belongs to which
+ * expression, and what re-renders when - and templating is still a replaceable
  * part. It is now a part with a working default rather than a hole.
  *
  * ── The expression evaluator ─────────────────────────────────────────────────
@@ -50,8 +50,8 @@
  * template engine and does not know what a template is. As of M3 it is what the
  * default renderer, `data-bind-*`, `data-model`, `data-if`, `data-on-*` and
  * non-path `{{ }}` interpolations all evaluate through, and the guarantee it
- * carries — no dynamic code construction anywhere, so bindings work under
- * `script-src 'self'` — is a property of the whole package.
+ * carries - no dynamic code construction anywhere, so bindings work under
+ * `script-src 'self'` - is a property of the whole package.
  *
  * Eight names are exported: parse a source to an AST, evaluate an AST, do both
  * in one call, compile a source to a reusable evaluator, ask which names an
@@ -65,8 +65,8 @@
  * ── The binding registry ─────────────────────────────────────────────────────
  *
  * `registerBinding(name, handler)` adds a binding kind. It is not a side door:
- * all ten built-ins — text, attr, block, raw, if, event, bind, model, options,
- * focus — are registered through this exact function, so anything a built-in
+ * all ten built-ins - text, attr, block, raw, if, event, bind, model, options,
+ * focus - are registered through this exact function, so anything a built-in
  * can do a consumer can do. `unregisterBinding` removes one. The handler
  * contract is documented at the top of handlers.js.
  *
@@ -93,7 +93,7 @@
  *
  * `applyBindings` returns a handle with `dispose()`. `compile` returns a
  * controller with `destroy()`. Both must be called on a page that outlives the
- * markup — an effect is a live node in the dependency graph and does not go away
+ * markup - an effect is a live node in the dependency graph and does not go away
  * because its nodes did.
  *
  * ── Keyed lists ──────────────────────────────────────────────────────────────
@@ -109,15 +109,15 @@
  *
  * Three names from graph.js are withheld on purpose:
  *
- *   flush         — the microtask-scheduled drain. `flushSync` is the strictly
+ *   flush         - the microtask-scheduled drain. `flushSync` is the strictly
  *                   safer caller-facing form: it clears the scheduled flag
  *                   before draining, so a caller can never leave a stale
  *                   microtask queued behind it. Publishing both would offer a
  *                   choice with one wrong answer.
- *   drainPending  — the propagation policy itself. Callers reach it through
+ *   drainPending  - the propagation policy itself. Callers reach it through
  *                   flushSync; exposing it would let them drive the graph
  *                   half-way through a batch.
- *   reactive      — the aggregate namespace object. Consumers of a module with
+ *   reactive      - the aggregate namespace object. Consumers of a module with
  *                   named exports do not need a second bundled copy of them,
  *                   and it duplicates `flush` back into the surface.
  *

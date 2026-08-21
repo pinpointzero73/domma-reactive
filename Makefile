@@ -5,7 +5,7 @@ VERSION := $(shell node -p "require('./package.json').version")
 # Default target
 help:
 	@echo ""
-	@echo "  domma-reactive $(VERSION) — Available commands"
+	@echo "  domma-reactive $(VERSION) - Available commands"
 	@echo ""
 	@echo "  Development"
 	@echo "    make install      Install dependencies"
@@ -25,7 +25,7 @@ help:
 	@echo "    make release-npm  Publish to npm"
 	@echo "    make release-gh   Push main, tag vX.Y.Z, push the tag"
 	@echo ""
-	@echo "    preflight runs AFTER the bump is committed — it checks the version"
+	@echo "    preflight runs AFTER the bump is committed - it checks the version"
 	@echo "    you are about to publish, not the one you last published."
 	@echo ""
 	@echo "  Domma pins this package EXACTLY. After releasing, re-pin it there:"
@@ -47,8 +47,8 @@ build:
 	npm run build
 
 # The one that matters before a publish. Builds, then loads every declared
-# entry point the way a real consumer would — require(), import() and a browser
-# <script> — checks no bundle contains dynamic code construction (what lets
+# entry point the way a real consumer would - require(), import() and a browser
+# <script> - checks no bundle contains dynamic code construction (what lets
 # bindings run under script-src 'self'), and asserts every artefact is stamped
 # with the current version, so a stale dist/ cannot be published as a fresh one.
 verify:
@@ -72,21 +72,21 @@ clean:
 
 # Everything that is cheaper to find out now than after publishing. npm will
 # not let you republish or reuse a version number, so a bad publish is
-# permanent — it can only be deprecated and superseded.
+# permanent - it can only be deprecated and superseded.
 preflight:
 	@git diff --quiet && git diff --cached --quiet \
-		|| { echo ""; echo "  preflight: working tree is dirty — commit or stash first"; echo ""; exit 1; }
+		|| { echo ""; echo "  preflight: working tree is dirty - commit or stash first"; echo ""; exit 1; }
 	@git fetch --quiet origin
 	@git merge-base --is-ancestor origin/main HEAD \
-		|| { echo ""; echo "  preflight: HEAD is BEHIND origin/main — fast-forward before releasing"; \
+		|| { echo ""; echo "  preflight: HEAD is BEHIND origin/main - fast-forward before releasing"; \
 		     echo "  local  $$(git rev-parse --short HEAD)"; \
 		     echo "  remote $$(git rev-parse --short origin/main)"; echo ""; \
 		     echo "  Releasing from a stale base is how a real tag gets clobbered."; echo ""; exit 1; }
 	@git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null \
-		&& { echo ""; echo "  preflight: tag v$(VERSION) already exists — bump the version first"; echo ""; exit 1; } \
+		&& { echo ""; echo "  preflight: tag v$(VERSION) already exists - bump the version first"; echo ""; exit 1; } \
 		|| true
 	@npm view domma-reactive@$(VERSION) version >/dev/null 2>&1 \
-		&& { echo ""; echo "  preflight: $(VERSION) is already published — npm will refuse it"; echo ""; exit 1; } \
+		&& { echo ""; echo "  preflight: $(VERSION) is already published - npm will refuse it"; echo ""; exit 1; } \
 		|| true
 	@grep -q "^## \[$(VERSION)\]" CHANGELOG.md \
 		|| { echo ""; echo "  preflight: no '## [$(VERSION)]' entry in CHANGELOG.md"; echo ""; exit 1; }
@@ -118,6 +118,6 @@ release-gh:
 	git push origin v$(VERSION)
 	@echo ""
 	@echo "  Tagged and pushed v$(VERSION)."
-	@echo "  This repo publishes via npm and tags only — no GitHub release object."
+	@echo "  This repo publishes via npm and tags only - no GitHub release object."
 	@echo "  If you want one:  gh release create v$(VERSION) --generate-notes"
 	@echo ""

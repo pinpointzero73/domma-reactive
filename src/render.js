@@ -15,7 +15,7 @@
  * package with a hole in it.
  *
  * So `renderFn` is now optional and this is the default. Passing one still
- * overrides it completely — Domma passes `utils.render` and gets byte-identical
+ * overrides it completely - Domma passes `utils.render` and gets byte-identical
  * behaviour to before, because nothing in this file runs for it.
  *
  * ── Relationship to Domma's `utils.render` ───────────────────────────────────
@@ -29,7 +29,7 @@
  *      renderer matches blocks with a non-greedy regular expression, so an
  *      `{{#each}}` inside an `{{#each}}` binds to the wrong `{{/each}}`. This
  *      one counts depth.
- *   2. `{{ }}` takes the full expression subset — `{{ n > 1 ? 'many' : 'one' }}`
+ *   2. `{{ }}` takes the full expression subset - `{{ n > 1 ? 'many' : 'one' }}`
  *      renders here and renders empty in Domma's. A plain dotted path is still
  *      resolved by path lookup, without the parser, so the common case is
  *      identical in both behaviour and cost.
@@ -47,7 +47,7 @@
 
 import {evaluateExpression} from './expression.js';
 
-/** {{#kind expr}} — a block opener. */
+/** {{#kind expr}} - a block opener. */
 const OPEN = /\{\{#(if|unless|each|with)\s+([^}]+?)\s*\}\}/;
 
 /** Any block token, used to find the `{{else}}` that belongs to THIS block. */
@@ -62,7 +62,7 @@ const PARTIAL = /\{\{>\s*([^{}]+?)\s*\}\}/g;
 /** {{! comment }} */
 const COMMENT = /\{\{!\s*[^{}]*?\s*\}\}/g;
 
-/** {{x}} — not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
+/** {{x}} - not {{#…}}, {{/…}}, {{>…}}, {{!…}}, {{{…}}} */
 const INTERP = /\{\{(?!\{)\s*([^#/>!{}][^{}]*?)\s*\}\}/g;
 
 /**
@@ -77,8 +77,8 @@ const SIMPLE_PATH = /^[A-Za-z_$][\w$]*(?:\.[\w$]+)*$/;
 /**
  * Characters that mean a `{{ }}` is an EXPRESSION rather than a key.
  *
- * Without this, `{{first-name}}` — a template reading a kebab-case key, which
- * is exactly what Domma's renderer resolves it as — parses as a subtraction and
+ * Without this, `{{first-name}}` - a template reading a kebab-case key, which
+ * is exactly what Domma's renderer resolves it as - parses as a subtraction and
  * renders `NaN`. Requiring whitespace around `-` and `+` separates the two: a
  * key is written closed up, arithmetic is written spaced out.
  *
@@ -119,7 +119,7 @@ export function truthy(value) {
  * `observableArray.destroy(item)` marks an item `_destroy: true` and leaves it
  * in the array, so a form can still submit it to a server that deletes on that
  * flag. Every render path must agree to skip it, or the user sees rows they
- * believe they have deleted — so this is exported and the keyed reconciler uses
+ * believe they have deleted - so this is exported and the keyed reconciler uses
  * it too, rather than each implementing `{{#each}}` semantics separately.
  *
  * The scan-before-filter is deliberate. Filtering unconditionally would cost an
@@ -160,7 +160,7 @@ function resolvePath(data, path) {
  * The order here is the contract:
  *
  *   `.`             the current item inside {{#each}}
- *   `@…`            the loop variables — @index, @first, @last
+ *   `@…`            the loop variables - @index, @first, @last
  *   a path          resolved by walking keys (see SIMPLE_PATH)
  *   no operators    also resolved by walking keys, so `{{first-name}}` reads a
  *                   kebab-case key and `{{upper name}}` (Domma's helper form)
@@ -204,7 +204,7 @@ function interpolate(template, data, options) {
  * of the `{{else}}` belonging to that same opener if there is one.
  *
  * Depth counting is what makes same-kind nesting work. A non-greedy regular
- * expression — the approach Domma's renderer takes — stops at the first close
+ * expression - the approach Domma's renderer takes - stops at the first close
  * token it meets, which for `{{#each a}}{{#each b}}…{{/each}}{{/each}}` is the
  * inner one, silently producing the wrong body for the outer loop.
  *
@@ -239,7 +239,7 @@ function findClose(template, kind, from) {
             continue;
         }
         if (depth === 0) {
-            // A close at depth zero of some other kind is a stray token — the
+            // A close at depth zero of some other kind is a stray token - the
             // template is malformed. Ignoring it lets this block still find its
             // own close rather than giving up on the rest of the template.
             if (match[2] === kind) return {close: at, alternate};
@@ -307,7 +307,7 @@ export function render(template, data = {}, options = {}) {
             .map((item, index) => render(consequent, itemContext(item, index, items.length), options))
             .join('');
     } else {
-        // with — a non-object context renders nothing, as Domma's does.
+        // with - a non-object context renders nothing, as Domma's does.
         middle = value !== null && typeof value === 'object'
             ? render(consequent, value, options)
             : '';

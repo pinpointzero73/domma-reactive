@@ -3,8 +3,8 @@
  *
  * `npm version --no-git-tag-version` does the right thing to the version and
  * the wrong thing to everything around it: it reserialises package.json with
- * npm's own formatting, which reflows hand-written inline arrays — `files` and
- * `keywords` here — into one entry per line. That lands in the release diff as
+ * npm's own formatting, which reflows hand-written inline arrays - `files` and
+ * `keywords` here - into one entry per line. That lands in the release diff as
  * a dozen spurious lines around the one that matters, and has to be undone by
  * hand every time.
  *
@@ -16,7 +16,7 @@
  *   node scripts/bump.mjs 0.4.2
  *
  * Refuses to run if the new version is not a plain semver, or is not higher
- * than the current one — a typo that lowers the version publishes fine and is
+ * than the current one - a typo that lowers the version publishes fine and is
  * then unfixable, because npm will not let you republish a version number.
  */
 
@@ -36,7 +36,7 @@ const fail = (message) => {
 };
 
 const next = process.argv[2];
-if (!next) fail('no version given — usage: node scripts/bump.mjs X.Y.Z');
+if (!next) fail('no version given - usage: node scripts/bump.mjs X.Y.Z');
 if (!SEMVER.test(next)) fail(`"${next}" is not a plain X.Y.Z version`);
 
 const pkgSource = readFileSync(PKG, 'utf8');
@@ -48,7 +48,7 @@ const rank = (v) => v.match(SEMVER).slice(1, 4).map(Number);
 const [a, b, c] = rank(next);
 const [x, y, z] = rank(current);
 if (a * 1e6 + b * 1e3 + c <= x * 1e6 + y * 1e3 + z) {
-    fail(`${next} is not higher than the current ${current} — npm will not let you republish a version`);
+    fail(`${next} is not higher than the current ${current} - npm will not let you republish a version`);
 }
 
 // Textual, and anchored to the top-level field: a nested "version" (there is

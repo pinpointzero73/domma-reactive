@@ -15,7 +15,7 @@
  * Setting `open` to false makes the `if` handler replace the contents of its own
  * region. It knows nothing about the `each` inside it, or about the twenty
  * instances that `each` created, or about the effects those instances own. Every
- * one of them would leak — silently, permanently, and in exactly the shape a
+ * one of them would leak - silently, permanently, and in exactly the shape a
  * naive test would not notice, because the DOM would look right.
  *
  * So disposal is attached to the NODE. Anything that owns resources tied to a
@@ -25,8 +25,8 @@
  *
  * ── Why a WeakMap and a counter ──────────────────────────────────────────────
  *
- * A WeakMap so that a node dropped without going through `disposeSubtree` — by
- * `innerHTML =`, by a consumer, by anything — takes its entry with it rather than
+ * A WeakMap so that a node dropped without going through `disposeSubtree` - by
+ * `innerHTML =`, by a consumer, by anything - takes its entry with it rather than
  * pinning it in a registry forever.
  *
  * A counter because `disposeSubtree` would otherwise walk every removed subtree
@@ -49,7 +49,7 @@ let live = 0;
 /**
  * Tie a teardown function to a node.
  *
- * Called again for the same node, both disposers run — a node can carry
+ * Called again for the same node, both disposers run - a node can carry
  * resources from more than one owner.
  *
  * @param {Node} node

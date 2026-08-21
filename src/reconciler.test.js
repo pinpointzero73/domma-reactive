@@ -12,7 +12,7 @@
  *
  *   NO LEAKS. A disposed instance leaves the DOM looking perfect and the
  *   dependency graph one Computation heavier, for ever. The only evidence is the
- *   count, so the count is what is asserted — before and after, back to baseline.
+ *   count, so the count is what is asserted - before and after, back to baseline.
  */
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -167,7 +167,7 @@ describe('node identity survives a collection change', () => {
     it('when an item object is replaced but its key is not', () => {
         const before = nodes();
 
-        // Same identity, new contents — the row is updated in place rather
+        // Same identity, new contents - the row is updated in place rather
         // than rebuilt.
         change([{id: 1, n: 'A'}, data.items[1], data.items[2]]);
 
@@ -356,8 +356,8 @@ describe('bindings inside a keyed block', () => {
 
     it('does not confuse an item binding with a page binding of the same id', () => {
         // Both the outer template and the item body number their bindings from
-        // zero. Without per-template id namespacing the outer runtime — which
-        // walks every node beneath it, item content included — hands an item's
+        // zero. Without per-template id namespacing the outer runtime - which
+        // walks every node beneath it, item content included - hands an item's
         // node to the page's binding.
         const data = {heading: 'H', rows: [{id: 1, n: 'a'}]};
         compile(
@@ -415,7 +415,7 @@ describe('keys', () => {
         expect(message).toMatch(/has no key=/);
         expect(message).toMatch(/key=id/);
 
-        // Still renders — the fallback is Tier 3 behaviour, not an error.
+        // Still renders - the fallback is Tier 3 behaviour, not an error.
         expect(texts()).toEqual(['a']);
 
         const before = nodes()[0];
@@ -521,7 +521,7 @@ describe('a keyed block in an awkward place', () => {
     it('demotes a keyed block inside an UNKEYED one rather than rendering nothing', () => {
         /*
          * The collection expression of the inner block would be evaluated
-         * against the top-level data, where `rows` means nothing — so it would
+         * against the top-level data, where `rows` means nothing - so it would
          * render an empty list on a page that looks finished. Demoting it to a
          * re-rendered block gets the right output at the cost of reconciliation,
          * and says so.
@@ -612,7 +612,7 @@ describe('disposal', () => {
     });
 
     it('drops every instance on controller.destroy()', () => {
-        // A controller's own bindings own no effects in the default mode — the
+        // A controller's own bindings own no effects in the default mode - the
         // caller wires those. Its list instances DO, and nothing else is in a
         // position to dispose them, so destroy() has to reach them.
         const before = liveComputations();
@@ -631,7 +631,7 @@ describe('disposal', () => {
     it('drops the effect of a binding a nested {{#if}} has hidden', () => {
         // An instance owns an effect per binding, including bindings that are
         // not currently rendered. When a region inside the item closes over
-        // one, its effect has nothing left to write to and has to go — or a row
+        // one, its effect has nothing left to write to and has to go - or a row
         // that toggles a detail panel leaks one Computation per toggle.
         const before = liveComputations();
         const data = {rows: [{id: 1, show: true, n: 'a'}]};
@@ -825,7 +825,7 @@ describe('property: any sequence of mutations lands where a full render would', 
 
     /*
      * 3,500 reconciles, each checked against a reference render that compiles
-     * the whole template from scratch — so 7,000 compiles in all. That lands
+     * the whole template from scratch - so 7,000 compiles in all. That lands
      * within a second or two of vitest's 5s default, which is close enough to
      * fail intermittently on a loaded machine and say nothing useful when it
      * does. The budget is explicit rather than borrowed.
@@ -973,7 +973,7 @@ describe('compile in reactive mode', () => {
     it('does not let a region effect swallow its children\'s dependencies', () => {
         /*
          * If the {{#if}}'s effect were credited with everything its children
-         * read, changing `name` would re-render the whole region — replacing
+         * read, changing `name` would re-render the whole region - replacing
          * the <b> with a new node on every keystroke. Node identity across an
          * unrelated change is the observable proof that attribution is right.
          */

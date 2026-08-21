@@ -152,7 +152,7 @@ describe('observable', () => {
         expect(body).toHaveBeenCalledTimes(2);
     });
 
-    it('silently drops an in-place mutation written back — use observableArray()', async () => {
+    it('silently drops an in-place mutation written back - use observableArray()', async () => {
         // The corollary of gating on equality: mutating in place and reassigning
         // is invisible to the graph. Task 5's observableArray exists for this.
         const list = observable(['a']);
@@ -190,7 +190,7 @@ describe('observable.subscribe', () => {
         count.subscribe((value) => seen.push(value));
         count.value = 2;
 
-        // No flushSync() — a subscription is a notification about a write, not
+        // No flushSync() - a subscription is a notification about a write, not
         // a recomputation of a graph.
         expect(seen).toEqual([2]);
     });

@@ -8,6 +8,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.6.1] - 2026-08-21
+
+### Changed
+- Em and en dashes replaced with plain hyphens throughout: source comments,
+  the console warnings the runtime emits, README, Tutorial and the docs. 759
+  of them across 41 files. No behaviour change - the library never used a long
+  dash as a value or a separator, only as punctuation in prose and messages.
+  Consumers see it in the three runtime warnings (read-only computed, flush
+  re-entry, notify option) and nowhere else.
+
 ## [0.6.0] - 2026-08-18
 
 Two new binding-context names, closing the ancestor gap against Knockout. The only capability
@@ -15,7 +25,7 @@ Knockout still has and this does not is components, which are next.
 
 ### Added
 
-- **`$parents`** — ancestor data, nearest first, so `$parents[1]` is a grandparent.
+- **`$parents`** - ancestor data, nearest first, so `$parents[1]` is a grandparent.
   `$parents[0]` is `$parent` everywhere below the root; at the root `$parent` is `null` and
   `$parents` is empty.
 
@@ -23,7 +33,7 @@ Knockout still has and this does not is components, which are next.
   caching the result. A keyed list creates a context per item per render whether or not any
   template mentions the name, so a list that never uses it pays nothing.
 
-- **`$parentContext`** — the enclosing context, and the one context name that *is* a context.
+- **`$parentContext`** - the enclosing context, and the one context name that *is* a context.
   Ancestor data cannot answer "which row of the **outer** list am I in?", because position lives
   on the context rather than on the data. `$parentContext.$index` answers it, and nothing could
   before:
@@ -32,9 +42,9 @@ Knockout still has and this does not is components, which are next.
   <ol>{{#each members key=id}}
       <li>
           {{name}}
-          — in {{$parents[0].name}}          <!-- the group -->
-          — of {{$parents[1].title}}         <!-- the root -->
-          — group {{$parentContext.$index}}  <!-- the OUTER list's position -->
+          - in {{$parents[0].name}}          <!-- the group -->
+          - of {{$parents[1].title}}         <!-- the root -->
+          - group {{$parentContext.$index}}  <!-- the OUTER list's position -->
       </li>
   {{/each}}</ol>
   ```
@@ -46,7 +56,7 @@ Knockout still has and this does not is components, which are next.
 ### Fixed
 
 - **Writing to a frozen target warns instead of throwing.** `resolveWriteTarget` hands back an
-  object and a key, and its callers assigned to it unguarded — so a frozen target threw a
+  object and a key, and its callers assigned to it unguarded - so a frozen target threw a
   `TypeError`, and a binding that throws takes the page down with it, which is the one thing this
   layer promises never to do.
 
@@ -56,7 +66,7 @@ Knockout still has and this does not is components, which are next.
 
 - **An inert `data-each` now says so.** `data-each` is an `applyBindings` spelling; the compiler
   discovers lists from `{{#each}}` only. A list's item template *is* compiled markup, so a
-  `data-each` nested inside another list was left exactly as written — its item template rendered
+  `data-each` nested inside another list was left exactly as written - its item template rendered
   once as ordinary markup, and the bindings inside it resolved against the **outer** item. It
   looked close enough to working to survive review.
 
@@ -67,7 +77,7 @@ Knockout still has and this does not is components, which are next.
   ```html
   <ul data-each="groups key=id">
       <li>
-          {{#each members key=id}}<b>{{name}} — {{$parentContext.$index}}</b>{{/each}}
+          {{#each members key=id}}<b>{{name}} - {{$parentContext.$index}}</b>{{/each}}
       </li>
   </ul>
   ```
@@ -81,14 +91,14 @@ Documentation, and one internal fix. No change to the public API.
 ### Added
 
 - The README now says **what the library is** before it says how to use it. It opened on
-  mechanism — derivations discovering their own reads, keyed reconciliation, the hand-written
-  parser — which only lands for someone who already knows what the library is for. There is now
+  mechanism - derivations discovering their own reads, keyed reconciliation, the hand-written
+  parser - which only lands for someone who already knows what the library is for. There is now
   a definition, a `What it does` section of seven capabilities each carrying the line that proves
   it, and a short `What it isn't`, so a reader can rule themselves out in seconds rather than
   after 1100 lines. The mechanism paragraphs are not gone; they are re-sited as three of the
   seven, where there is a frame to hang them on.
 
-- `docs/superpowers/specs/` and `docs/superpowers/plans/` — the agreed design for component
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` - the agreed design for component
   params, and the implementation plan that follows from it. Repo only; not packaged.
 
 ### Changed
@@ -112,7 +122,7 @@ Documentation, and one internal fix. No change to the public API.
 - **The key sentinel is written as `\0` rather than a literal NUL byte.** The synthetic keys the
   reconciler mints for unkeyed and duplicate items, and the placeholder values `data-options`
   gives options with no value, are prefixed with NUL so they cannot collide with anything an
-  author supplies — that part was right. Embedding it as a raw `0x00` was not: it made `file(1)`
+  author supplies - that part was right. Embedding it as a raw `0x00` was not: it made `file(1)`
   report `handlers.js` and `reconciler.js` as `data` rather than JavaScript, and grep and ripgrep
   skip binary files silently. A search for `registerBinding` across `src/` returned every module
   except the one that defines it. The escape produces the identical string; only the bytes on
@@ -124,13 +134,13 @@ Documentation only. No change to any bundle beyond its version banner.
 
 ### Added
 
-- **`Tutorial.md`** — a contacts page built in ten steps: add, edit in place, search, filter
+- **`Tutorial.md`** - a contacts page built in ten steps: add, edit in place, search, filter
   by group, delete, empty state, `localStorage`, disposal. It meets each of 0.5.0's features
   at the point someone building something would reach for it.
 
   Its listings are not illustrative. `src/tutorial.test.js` is the finished `index.html` body
   and `app.js` transcribed rather than paraphrased, driven through `applyBindings` against
-  jsdom — so a change to the package that breaks the tutorial goes red like anything else.
+  jsdom - so a change to the package that breaks the tutorial goes red like anything else.
 
 - The tutorial now ships in the package rather than living on GitHub alone. Adding it to
   `files` is why this release exists: 0.5.0's tarball was already published, and npm does not
@@ -144,12 +154,12 @@ before only by writing it yourself; nothing that already worked has changed.
 ### Added
 
 - **Extenders.** `observable().extend({…})` and the same on `observableArray`, with
-  `rateLimit` (both of Knockout's methods — `notifyWhenChangesStop` and
+  `rateLimit` (both of Knockout's methods - `notifyWhenChangesStop` and
   `notifyAtFixedRate`), `throttle` as Knockout's older name for it, and
   `notify: 'always'`. `registerExtender()` / `unregisterExtender()` open the same
   mechanism to consumers, exactly as `registerBinding()` does for bindings.
 
-  Unlike Knockout's original `throttle`, **the write is never delayed** — only the
+  Unlike Knockout's original `throttle`, **the write is never delayed** - only the
   notification. A rate-limited observable always reads back what was last written to it,
   which is the bug that made Knockout deprecate `throttle` in the first place.
 
@@ -157,14 +167,14 @@ before only by writing it yourself; nothing that already worked has changed.
   a derived value; assigning to a computed without a `write` now warns and names it,
   rather than storing into the read cache where the next recompute would drop it.
 
-- **`observableArray.indexOf`, `.replace`, `.destroy`, `.destroyAll`** — the rest of
+- **`observableArray.indexOf`, `.replace`, `.destroy`, `.destroyAll`** - the rest of
   Knockout's array vocabulary. `destroy()` marks an item `_destroy: true` and leaves it
   in the collection, for servers that delete on that flag; `{{#each}}`, `data-each` and
   `data-options` all skip a marked item, so the collection and what is on screen agree.
 
 - **`data-bind-style`**, in two spellings: `data-bind-style-color="shade"` for one
   property (kebab-cased, custom properties included) and `data-bind-style="look"` for an
-  object of them. Ownership works as `data-bind-class` does — only the properties this
+  object of them. Ownership works as `data-bind-class` does - only the properties this
   binding set last time are removed, so a static `style=` attribute survives.
 
 - **`data-options`**, with `data-options-text`, `data-options-value` and
@@ -172,13 +182,13 @@ before only by writing it yourself; nothing that already worked has changed.
   expressions against the item rather than property names, so a computed label works.
   Option values that are not strings round-trip through `data-model` by identity instead
   of arriving back as `"[object Object]"`, and a value the model chose before its option
-  existed is applied by the rebuild that brings it — so attribute order does not matter,
+  existed is applied by the rebuild that brings it - so attribute order does not matter,
   and neither does a collection that arrives from a fetch.
 
-- **`data-focus`** — Knockout's `hasFocus`, two-way. An expression it cannot write
+- **`data-focus`** - Knockout's `hasFocus`, two-way. An expression it cannot write
   through still drives focus, and warns about only the write-back.
 
-- **Virtual bindings in `applyBindings`** — `<!-- dm if: x -->` … `<!-- /dm -->`, plus
+- **Virtual bindings in `applyBindings`** - `<!-- dm if: x -->` … `<!-- /dm -->`, plus
   `each` and `text`. Knockout's `<!-- ko -->`, and the one thing `applyBindings` could
   not express: a run of `<li>`s or `<td>`s with no spare element to hang an attribute on.
   They nest, and an `if` holds its nodes aside as a fragment rather than as a list, so a
@@ -197,7 +207,7 @@ before only by writing it yourself; nothing that already worked has changed.
 
 - Every built artefact now carries a banner naming its version
   (`/*! domma-reactive v0.4.2 | MIT | … */`), kept through minification, so a bundle is no longer
-  anonymous — handed one, you can tell which release it is.
+  anonymous - handed one, you can tell which release it is.
 
 ### Fixed
 
@@ -208,25 +218,25 @@ before only by writing it yourself; nothing that already worked has changed.
 
 ### Fixed
 
-- `applyBindings` warned *"does not interpolate `{{ }}`"* about mustache inside a `data-each` body —
+- `applyBindings` warned *"does not interpolate `{{ }}`"* about mustache inside a `data-each` body -
   which is the one place in already-rendered DOM where mustache **does** work, because a list's
   contents are a template that is lifted out, compiled and cloned per item. The scan ran before the
   list body was recognised as a template, so the advice was backwards: it told authors to replace
   working markup. The rendering was always correct; only the warning was wrong.
 - The `applyBindings` example in the README bound `data-model="query"` against a raw `observable`,
   which shows `[object Object]` in the input and drops the write on the first keystroke. Corrected to
-  `query.value` — the no-unwrapping rule applies in a binding exactly as it does in JavaScript.
+  `query.value` - the no-unwrapping rule applies in a binding exactly as it does in JavaScript.
 
 ## [0.4.0] - 2026-08-05
 
 ### Added
 
-- **`applyBindings(data, rootElement)`** — the other direction from `compile()`. Activates binding
+- **`applyBindings(data, rootElement)`** - the other direction from `compile()`. Activates binding
   attributes on DOM that already exists, in place, leaving the markup otherwise as it found it. No
   build step and no second source of truth for the markup.
 - **Keyed list reconciliation.** `{{#each items key=id}}` keeps the DOM nodes of items that survive a
   change, so focus, uncommitted input, scroll position and animation state survive with them.
-- **Instance lifecycle** — `dispose()` on the `applyBindings` handle and `destroy()` on the `compile`
+- **Instance lifecycle** - `dispose()` on the `applyBindings` handle and `destroy()` on the `compile`
   controller drop every effect, listener, list instance and marker they created.
 - `renderTemplate` is exported, and `compile()`'s renderer parameter became optional, so the package
   can render without a template engine being supplied.
@@ -234,7 +244,7 @@ before only by writing it yourself; nothing that already worked has changed.
 ### Fixed
 
 - **A list's rows could not act on the list.** Inside a list `$data` is the item, so
-  `$parent.remove($data)` was the only way for a row to name the collection that owns it — and it did
+  `$parent.remove($data)` was the only way for a row to name the collection that owns it - and it did
   not parse. `data-on-*` may now call a method; the restriction is scoped rather than lifted, since
   the evaluator still refuses to perform a method call, so `{{ }}`, `data-if` and `data-bind-*` remain
   reads with no side effects.
@@ -242,7 +252,7 @@ before only by writing it yourself; nothing that already worked has changed.
   back to HTML, which escapes every `&`, so the documented `data-bind-class="done && 'struck'"` idiom
   came back as an entity and failed to parse. Expression-valued attributes are now decoded in a single
   pass, so `&amp;lt;` cannot double-decode.
-- **`computed().value` was a stale field** — neither recomputed nor tracked. It is now a getter, which
+- **`computed().value` was a stale field** - neither recomputed nor tracked. It is now a getter, which
   also makes a computed readable from a template expression, where a method cannot be called.
 - **`observableArray().remove()` accepts a value or a predicate.** A function used to be compared
   against each item by identity, never matched, and removed nothing without a word.
@@ -251,12 +261,12 @@ before only by writing it yourself; nothing that already worked has changed.
 
 ### Added
 
-- **A CSP-safe expression evaluator** — tokeniser, Pratt parser, AST walker and helper registry,
+- **A CSP-safe expression evaluator** - tokeniser, Pratt parser, AST walker and helper registry,
   supporting property paths, indexing, comparison, logical operators, ternaries, arithmetic and
   literals. **No `eval` and no `Function` constructor**, in the source or in any built bundle, so
   expressions work under `script-src 'self'`. Access through `__proto__`, `constructor` or `prototype`
   is refused in every form, including a computed key whose value is only `'__proto__'` at runtime.
-- **A binding registry** — `registerBinding()` / `unregisterBinding()`, plus four behaviour bindings:
+- **A binding registry** - `registerBinding()` / `unregisterBinding()`, plus four behaviour bindings:
   `data-on-*`, `data-bind-*`, `data-model` and `data-if`, the last of which removes the element rather
   than hiding it. The existing mustache kinds register through the same public function, so a custom
   binding is not a second-class citizen. There is deliberately no `data-bind-html`.

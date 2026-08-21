@@ -5,7 +5,7 @@
  *
  * One item of a keyed `{{#each}}`: a pair of comment anchors, the nodes between
  * them, a binding context of its own, and one effect per binding inside it. It
- * is created when a key first appears, kept — nodes, effects and all — for as
+ * is created when a key first appears, kept - nodes, effects and all - for as
  * long as that key is in the collection, and disposed when it goes.
  *
  * That is the whole point of the milestone. Before it, a collection change
@@ -18,11 +18,11 @@
  * ── The algorithm ────────────────────────────────────────────────────────────
  *
  *   1. Walk the new collection once, in order. For each item take its key. If an
- *      instance already exists for that key, CLAIM it — delete it from the
+ *      instance already exists for that key, CLAIM it - delete it from the
  *      previous key map and refresh its context. Otherwise clone a new one.
  *   2. Whatever is left in the previous key map is gone from the collection.
  *      Dispose it: effects first, then nodes. (Design spec §6, and in that
- *      order — see `dispose` below.)
+ *      order - see `dispose` below.)
  *   3. Walk the claimed-and-created instances in order, placing each one after
  *      the last, moving only those not already in the right place.
  *
@@ -39,8 +39,8 @@
  * previous positions and move only the items outside it; reversing a list of n
  * items then costs n-1 moves instead of n, and a single item dragged from the
  * end to the front costs 1 instead of n. Neither the correctness of the result
- * nor node identity depends on it — an instance that is moved is the same
- * instance, with the same nodes and the same effects — so it is a performance
+ * nor node identity depends on it - an instance that is moved is the same
+ * instance, with the same nodes and the same effects - so it is a performance
  * refinement and nothing more.
  *
  * ── Disposal is the dangerous part ───────────────────────────────────────────
@@ -59,7 +59,7 @@
  *
  * The order within `dispose()` is effects, then nodes. The other way round, an
  * effect can be recomputed by a flush that is already in flight, between the
- * nodes leaving the document and the effect being unlinked — writing to
+ * nodes leaving the document and the effect being unlinked - writing to
  * detached nodes at best, and re-entering a half-torn-down instance at worst.
  */
 
@@ -139,7 +139,7 @@ export function createInstance(factory, parentContext, item, index, length) {
         runtime,
         disposed: false,
 
-        /** Anchors included — what has to move when the instance moves. */
+        /** Anchors included - what has to move when the instance moves. */
         allNodes() {
             return [open, ...rangeNodes(open, close), close];
         },
@@ -151,7 +151,7 @@ export function createInstance(factory, parentContext, item, index, length) {
          * observe has changed. Item identity and index always count; the
          * collection's length counts only when the body mentions `@last` or
          * `$length`, because otherwise every append would refresh every existing
-         * item — an O(n) pass on every push, which is exactly the cost keyed
+         * item - an O(n) pass on every push, which is exactly the cost keyed
          * reconciliation exists to remove.
          *
          * A mutated-in-place item is deliberately NOT detected. The same rule
@@ -163,8 +163,8 @@ export function createInstance(factory, parentContext, item, index, length) {
          */
         refresh(nextParent, nextItem, nextIndex, nextLength) {
             /*
-             * The parent CONTEXT is a fresh frozen object on every update — a
-             * caller passing the same data twice still produces two of them —
+             * The parent CONTEXT is a fresh frozen object on every update - a
+             * caller passing the same data twice still produces two of them -
              * so comparing it by identity would make every reconcile a full
              * refresh and undo the paragraph below. What an instance can
              * actually observe of its parent is `$parent` and `$root`.
@@ -183,7 +183,7 @@ export function createInstance(factory, parentContext, item, index, length) {
             instance.parentContext = nextParent;
 
             // When nothing observable changed, the context keeps a $length that
-            // is out of date and that — by the test just above — nothing in this
+            // is out of date and that - by the test just above - nothing in this
             // instance reads.
             if (!replaced && !moved) return false;
 
@@ -234,8 +234,8 @@ export function createInstance(factory, parentContext, item, index, length) {
 /**
  * Put the instances in order after the region's opening anchor.
  *
- * An instance already sitting where it belongs is not touched — which is what
- * makes an append cost one insertion rather than n moves — and one that is not
+ * An instance already sitting where it belongs is not touched - which is what
+ * makes an append cost one insertion rather than n moves - and one that is not
  * is moved whole, anchors included, so its extent survives the move intact.
  *
  * @param {Comment} open
@@ -315,7 +315,7 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
     const ordered = [];
 
     // Applied here rather than in the handler so that every route into a keyed
-    // list agrees — apply-bindings reconciles through this function too, and a
+    // list agrees - apply-bindings reconciles through this function too, and a
     // destroyed item that vanished from one path and not the other would be a
     // difference between server-rendered and compiled markup.
     const live = liveItems(items);
@@ -327,7 +327,7 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
         if (key === null || key === undefined) {
             warnOnce(
                 `key:missing:${label}:${keyPath}`,
-                `key=${keyPath} is missing on an item of ${label} — falling back to ` +
+                `key=${keyPath} is missing on an item of ${label} - falling back to ` +
                 'position for that item, which reconciles no better than an unkeyed ' +
                 'block. Give every item a stable identifier.'
             );
@@ -335,7 +335,7 @@ export function reconcile(region, items, factory, keyPath, parentContext, label)
         } else if (next.has(key)) {
             warnOnce(
                 `key:duplicate:${label}:${keyPath}`,
-                `two items of ${label} share key=${keyPath} value "${String(key)}" — ` +
+                `two items of ${label} share key=${keyPath} value "${String(key)}" - ` +
                 'a key must identify exactly one item. The duplicate is being kept ' +
                 'apart by position, so it will not reconcile across changes.'
             );

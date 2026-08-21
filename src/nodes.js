@@ -3,7 +3,7 @@
  *
  * Three jobs, and nothing else:
  *
- *   1. Turn a string into nodes — the single parse site for the whole package.
+ *   1. Turn a string into nodes - the single parse site for the whole package.
  *   2. Index a set of root nodes, attaching each binding to the nodes carrying
  *      its id.
  *   3. Replace the contents of a comment-delimited region, disposing anything

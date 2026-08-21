@@ -3,7 +3,7 @@
  *
  * A tutorial is a promise that the code in it works. That promise rots silently:
  * a rename here, a changed default there, and the page a reader copies out no
- * longer does what the prose says it does — and nothing goes red, because
+ * longer does what the prose says it does - and nothing goes red, because
  * documentation is not on the test path.
  *
  * So it is, here. The markup below is Tutorial.md's `index.html` body and the
@@ -20,7 +20,7 @@ import {parseFragment} from './nodes.js';
 
 const GROUPS = ['Family', 'Friends', 'Work'];
 
-/** Tutorial.md — index.html, the body of #app. */
+/** Tutorial.md - index.html, the body of #app. */
 const MARKUP = `
 <div id="app">
     <p id="summary"><!-- dm text: summary.value -->loading&hellip;<!-- /dm --></p>
@@ -39,7 +39,7 @@ const MARKUP = `
 
     <ul id="list" data-each="visible.value key=id">
         <li>
-            <span class="show" data-if="!editing.value">{{name.value}} &mdash; {{email.value}}</span>
+            <span class="show" data-if="!editing.value">{{name.value}} - {{email.value}}</span>
             <input class="edit" data-if="editing.value" data-model="name.value" data-focus="editing.value">
             <span class="group">{{group.value}}</span>
             <button class="edit-btn" data-on-click="$parent.edit($data)">Edit</button>
@@ -52,7 +52,7 @@ const MARKUP = `
     <!-- /dm -->
 </div>`;
 
-/** Tutorial.md — app.js. */
+/** Tutorial.md - app.js. */
 function createApp() {
     let nextId = 1;
 
@@ -196,7 +196,7 @@ describe('Tutorial.md - the contacts app', () => {
         flushSync();
 
         expect(all('#list li')).toHaveLength(1);
-        expect(one('#list li .show').textContent).toBe('Ada — ada@example.com');
+        expect(one('#list li .show').textContent).toBe('Ada - ada@example.com');
         expect(one('#draft-name').value).toBe('');
         expect(one('#summary').textContent.trim()).toBe('1 contact(s), 1 shown');
         expect(one('#none')).toBeNull();
