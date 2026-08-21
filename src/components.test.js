@@ -11,10 +11,11 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {createRootContext} from './context.js';
-import {observable} from './observable.js';
+import {observable, observableArray} from './observable.js';
 import {parseFragment} from './nodes.js';
 import {compile} from './template-compiler.js';
-import {flushSync} from './graph.js';
+import {flushSync, liveComputations} from './graph.js';
+import {liveDisposers} from './lifecycle.js';
 import {
     collectParams,
     componentDefinition,
@@ -261,5 +262,119 @@ describe('mounting', () => {
         const {host} = mount(`<div data-component="'probe'"></div>`, {title: 'Page'});
 
         expect(host.querySelector('b').textContent).toBe('Page');
+    });
+});
+
+describe('lifecycle', () => {
+    it('calls dispose() on the view model when the component goes away', () => {
+        const disposed = vi.fn();
+        registerComponent('probe', {template: '<b></b>', create: () => ({dispose: disposed})});
+
+        const {controller} = mount(`<div data-component="'probe'"></div>`, {});
+        controller.destroy();
+
+        expect(disposed).toHaveBeenCalledOnce();
+    });
+
+    it('swaps the component when the name changes, disposing the old one exactly once', () => {
+        const goneA = vi.fn();
+        registerComponent('probe', {template: '<b>A</b>', create: () => ({dispose: goneA})});
+        registerComponent('probe-b', {template: '<i>B</i>'});
+
+        const which = observable('probe');
+        const {host} = mount(`<div data-component="which.value"></div>`, {which});
+        expect(host.querySelector('b')).not.toBeNull();
+
+        which.value = 'probe-b';
+        flushSync();
+
+        expect(host.querySelector('b')).toBeNull();
+        expect(host.querySelector('i').textContent).toBe('B');
+        expect(goneA).toHaveBeenCalledOnce();
+
+        unregisterComponent('probe-b');
+    });
+
+    it('does not rebuild when an unrelated update runs and the name is unchanged', () => {
+        const created = vi.fn(() => ({}));
+        registerComponent('probe', {template: '<b></b>', create: created});
+
+        const which = observable('probe');
+        mount(`<div data-component="which.value"></div>`, {which});
+
+        which.value = 'probe';
+        flushSync();
+
+        expect(created).toHaveBeenCalledOnce();
+    });
+
+    it('leaves no disposers behind after teardown', () => {
+        const before = liveDisposers();
+        registerComponent('probe', {
+            template: '<b data-bind-text="x.value"></b>',
+            create: () => ({x: observable(1)})
+        });
+
+        const {controller} = mount(`<div data-component="'probe'"></div>`, {});
+        controller.destroy();
+
+        expect(liveDisposers()).toBe(before);
+    });
+
+    it('leaves no live computations behind after teardown', () => {
+        const before = liveComputations();
+        registerComponent('probe', {
+            template: '<b data-bind-text="x.value"></b>',
+            create: () => ({x: observable(1)})
+        });
+
+        const {controller} = mount(`<div data-component="'probe'"></div>`, {});
+        controller.destroy();
+
+        expect(liveComputations()).toBe(before);
+    });
+
+    it('leaves nothing behind across repeated swaps', () => {
+        registerComponent('probe', {
+            template: '<b data-bind-text="x.value"></b>',
+            create: () => ({x: observable(1)})
+        });
+        registerComponent('probe-b', {template: '<i>B</i>'});
+
+        const which = observable('probe');
+        const {controller} = mount(`<div data-component="which.value"></div>`, {which});
+        const afterFirst = liveDisposers();
+
+        for (let i = 0; i < 5; i++) {
+            which.value = i % 2 === 0 ? 'probe-b' : 'probe';
+            flushSync();
+        }
+        which.value = 'probe';
+        flushSync();
+
+        expect(liveDisposers()).toBe(afterFirst);
+
+        controller.destroy();
+        unregisterComponent('probe-b');
+    });
+
+    it('keeps its instance when a sibling row is removed from an enclosing list', () => {
+        registerComponent('probe', {template: '<b data-bind-text="id"></b>'});
+
+        const rows = observableArray([{id: 1}, {id: 2}]);
+        const {host} = mount(
+            `{{#each rows key=id}}<li><div data-component="'probe'" data-params="$data"></div></li>{{/each}}`,
+            {rows}
+        );
+        flushSync();
+
+        const first = host.querySelector('b');
+        expect(first.textContent).toBe('1');
+
+        rows.remove((r) => r.id === 2);
+        flushSync();
+
+        expect(host.querySelectorAll('b').length).toBe(1);
+        expect(host.querySelector('b')).toBe(first);
     });
 });
