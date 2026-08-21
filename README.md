@@ -1537,8 +1537,12 @@ This is a reactivity and binding layer. It is **not** a framework: there is no r
 server-side-rendering hydration beyond `applyBindings`, and no devtools.
 
 Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `data-bind-html`, no observable
-unwrapping, no `eval`-backed expressions, no object literals in a binding, and no minimal-move list reconciliation yet.
-None of these is waiting on anything. The spellings here differ from Knockout's on purpose and will go on differing.
+unwrapping, no `eval`-backed expressions, and no object literals in a binding. None of these is waiting on anything, and
+the spellings here differ from Knockout's on purpose and will go on differing.
+
+One thing is a refinement rather than an omission: list placement is in order rather than
+[minimal-move](#deferred-minimal-moves). That costs extra DOM moves on a reverse or a long drag and nothing else -
+correctness and node identity do not depend on it, so it can land in any 1.x release without disturbing anything.
 
 **The Knockout gap list is empty.** `$parents[n]` shipped in 0.6.0 with `$parentContext`, [components](#components) in
 0.7.0, and [slots](#slots) in 0.8.0. Anything Knockout can do, this can do. What remains different is spelling, and that

@@ -8,6 +8,56 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [1.0.0] - 2026-08-21
+
+The same code as 0.8.0, with a promise attached.
+
+0.8.0 closed the last capability gap against Knockout. This release does not add to it; it declares
+that the surface is stable. The version number is the only thing that changed, and that is
+deliberate - a 1.0.0 that also changed behaviour would be asking you to trust a promise and absorb a
+change at the same time.
+
+### What 1.0.0 means
+
+- **The thirty-three exported names are the public API.** Anything not in the README's API reference
+  is an internal detail and may change in a minor release. That was already written down; it is now
+  binding.
+- **Breaking changes need a major version.** Removing an export, changing a signature, or changing
+  what a binding does to working markup are all 2.0.0 events.
+- **The binding spellings are settled.** `data-bind-text`, `data-model`, `data-each`, `{{#each}}`,
+  `data-component`, `data-param-*`, `{{#slot}}`, `data-slot`, and the eight binding-context names.
+  They differ from Knockout's on purpose and will go on differing.
+- **The guarantees hold or it is a bug**: no `eval` and no `Function` constructor, so it runs under
+  `script-src 'self'`; one broken binding never takes the page down; keyed lists preserve DOM node
+  identity; and nothing in the binding layer throws on bad input.
+
+### How it got here
+
+| | |
+|---|---|
+| 0.5.x | the reactive core, bindings, keyed lists, `applyBindings` |
+| 0.6.0 | `$parents[n]`, `$parentContext` |
+| 0.7.0 | components |
+| 0.8.0 | slots - capability parity complete |
+| 1.0.0 | the same code, declared stable |
+
+961 tests, 33 exports verified through `require()`, `import()` and a `<script>` tag, 20 KB gzipped,
+no dependencies.
+
+### Changed
+
+- `README.md` no longer describes minimal-move list reconciliation as an omission "yet". It is a
+  refinement to placement, not a missing capability: correctness and node identity do not depend on
+  it, so it can land in any 1.x release.
+
+### Not in 1.0.0, and not owed
+
+- **Scoped slots** - a component exposing values its own slot content reads, as Vue's `v-slot` does.
+  The one thing that genuinely meets the compile-once wall. Knockout has no equivalent.
+- **Minimal-move list reconciliation.** Placement is in order; reversing n items costs n moves rather
+  than n-1. A performance refinement with no API consequence.
+- **Async or AMD template loading.** Templates are strings.
+
 ## [0.8.0] - 2026-08-21
 
 Slots, which completes capability parity with Knockout. A component can now leave holes for the page
@@ -441,6 +491,7 @@ before only by writing it yourself; nothing that already worked has changed.
 - Packaged as UMD, CommonJS and ESM, with `verify-dist` checking every declared entry point loads the
   way a real consumer would before publishing.
 
+[1.0.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v1.0.0
 [0.8.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.8.0
 [0.7.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.7.0
 [0.6.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.6.0
