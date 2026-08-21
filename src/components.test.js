@@ -674,3 +674,107 @@ describe('slots', () => {
         expect(host.querySelector('tbody tr td').textContent).toBe('cell');
     });
 });
+
+describe('slots through a swap', () => {
+    it('carries the same DOM nodes into the replacement', () => {
+        registerComponent('probe', {template: '<div class="a">{{#slot}}{{/slot}}</div>'});
+        registerComponent('probe-b', {template: '<section class="b">{{#slot}}{{/slot}}</section>'});
+
+        const which = observable('probe');
+        const {host} = mount(`<div data-component="which.value"><b>kept</b></div>`, {which});
+        const b = host.querySelector('b');
+        expect(host.querySelector('.a b')).toBe(b);
+
+        which.value = 'probe-b';
+        flushSync();
+
+        expect(host.querySelector('.b b')).toBe(b);
+        expect(host.querySelector('.a')).toBeNull();
+
+        unregisterComponent('probe-b');
+    });
+
+    it('leaves projected bindings working after a swap', () => {
+        registerComponent('probe', {template: '<div class="a">{{#slot}}{{/slot}}</div>'});
+        registerComponent('probe-b', {template: '<section class="b">{{#slot}}{{/slot}}</section>'});
+
+        const which = observable('probe');
+        const who = observable('Ada');
+        const {host} = mount(
+            `<div data-component="which.value"><b data-bind-text="who.value"></b></div>`,
+            {which, who}
+        );
+
+        which.value = 'probe-b';
+        flushSync();
+        who.value = 'Grace';
+        flushSync();
+
+        expect(host.querySelector('.b b').textContent).toBe('Grace');
+
+        unregisterComponent('probe-b');
+    });
+
+    it('leaves no disposers behind after teardown', () => {
+        const before = liveDisposers();
+        registerComponent('probe', {template: '<div>{{#slot}}{{/slot}}</div>'});
+
+        const {controller} = mount(
+            `<div data-component="'probe'"><b data-bind-text="x.value"></b></div>`,
+            {x: observable(1)}
+        );
+        controller.destroy();
+
+        expect(liveDisposers()).toBe(before);
+    });
+
+    it('leaves no live computations behind after teardown', () => {
+        const before = liveComputations();
+        registerComponent('probe', {template: '<div>{{#slot}}<i data-bind-text="y"></i>{{/slot}}</div>',
+            create: () => ({y: 'fallback'})});
+
+        const {controller} = mount(
+            `<div data-component="'probe'"><b data-bind-text="x.value"></b></div>`,
+            {x: observable(1)}
+        );
+        controller.destroy();
+
+        expect(liveComputations()).toBe(before);
+    });
+
+    it('keeps each rows own content in a keyed list', () => {
+        registerComponent('probe', {template: '<div class="frame">{{#slot}}{{/slot}}</div>'});
+
+        const rows = observableArray([{id: 1, label: 'one'}, {id: 2, label: 'two'}]);
+        const {host} = mount(
+            `{{#each rows key=id}}<li data-component="'probe'"><b data-bind-text="label"></b></li>{{/each}}`,
+            {rows}
+        );
+        flushSync();
+
+        expect([...host.querySelectorAll('.frame b')].map((n) => n.textContent))
+            .toEqual(['one', 'two']);
+
+        const first = host.querySelector('.frame b');
+        rows.remove((r) => r.id === 2);
+        flushSync();
+
+        expect(host.querySelectorAll('.frame b')).toHaveLength(1);
+        expect(host.querySelector('.frame b')).toBe(first);
+    });
+
+    it('supports a component inside another components slot content', () => {
+        registerComponent('probe', {template: '<div class="outer">{{#slot}}{{/slot}}</div>'});
+        registerComponent('probe-b', {template: '<span class="inner">{{#slot}}{{/slot}}</span>'});
+
+        const {host} = mount(
+            `<div data-component="'probe'"><div data-component="'probe-b'"><b>deep</b></div></div>`,
+            {}
+        );
+        flushSync();
+
+        expect(host.querySelector('.outer .inner b').textContent).toBe('deep');
+
+        unregisterComponent('probe-b');
+    });
+});
