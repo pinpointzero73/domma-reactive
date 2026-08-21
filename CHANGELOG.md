@@ -8,6 +8,63 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [0.8.0] - 2026-08-21
+
+Slots, which completes capability parity with Knockout. A component can now leave holes for the page
+to fill, with fallback content for the ones it does not.
+
+### Added
+
+- **`{{#slot}}` and `{{#slot name}}`** in a component's template, and **`data-slot`** at the usage
+  site. Anything without a `data-slot` goes to the default slot, text included; several elements may
+  share a name and arrive in document order.
+
+  A mustache block rather than an element because an element does not survive the HTML parser:
+  `<dm-slot>` is hoisted out of a `<tbody>` and deleted outright inside a `<select>`, and a table
+  shell is exactly the kind of component slots exist for. A block compiles to comment anchors, which
+  sit anywhere - the same reason `{{#each}}` already works inside a table.
+
+- **Fallback content.** The block body renders only when nothing is projected into that slot.
+
+- **Two scopes, one hole.** Fallback content resolves against the component's view model, because the
+  component's template supplied it. Projected content resolves against the outer context, because the
+  page did. A component cannot inject values into its slot content and does not need to - to hand
+  something outward it takes a callback param, as before.
+
+- **Projected content survives a swap.** Changing a dynamic component's name carries the same DOM
+  nodes into the replacement rather than rebuilding them, so a half-typed input inside a slot is not
+  lost. The nodes belong to the outer runtime throughout; the component only relocates them.
+
+### Corrected
+
+0.7.0's entry, and the README alongside it, said slots were blocked by the compile-once wall - that a
+template is compiled into a `<template>` before any render pass exists, the same wall `{{> partial}}`
+meets inside a keyed block.
+
+**That was wrong.** It blocks one implementation, compiling slot content into the component's
+factory, and slots do not need that. Slot content is written at the usage site, so the enclosing
+template has already annotated it, painted it and bound it to the outer context. An effect holds a
+direct node reference and `indexRoots` matches bindings by marker id anywhere in the subtree, so
+moving a node does not disturb its binding. Slots are a placement problem, and the component handler
+already owned placement.
+
+What genuinely meets that wall is **scoped slots** - a component exposing values its own slot content
+reads, as Vue's `v-slot` does. Knockout has no equivalent, so parity does not require it.
+
+`{{> partial}}` inside a keyed block does meet the wall, and its own note stands.
+
+### Fixed
+
+- Twelve anchor links in `Tutorial.md` pointed at headings that no longer generated those anchors.
+  0.6.1 replaced the em dash in each step heading with `" - "`, which adds a third dash to the
+  generated anchor, and the contents table still used the two-dash form. Every link in the tutorial's
+  own contents went nowhere.
+
+### Still missing
+
+- Scoped slots, as above.
+- Async or AMD template loading. Templates are strings.
+
 ## [0.7.0] - 2026-08-21
 
 Components - the last substantial capability Knockout had and this did not, apart from slots. A
@@ -384,6 +441,7 @@ before only by writing it yourself; nothing that already worked has changed.
 - Packaged as UMD, CommonJS and ESM, with `verify-dist` checking every declared entry point loads the
   way a real consumer would before publishing.
 
+[0.8.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.8.0
 [0.7.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.7.0
 [0.6.0]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.6.0
 [0.5.2]: https://github.com/pinpointzero73/domma-reactive/releases/tag/v0.5.2
