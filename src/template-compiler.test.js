@@ -485,3 +485,29 @@ describe('componentFactory', () => {
         expect(componentFactory('<b>{{$length}}</b>', 'c', render, {}).usesLength).toBe(true);
     });
 });
+
+describe('data-param-* with no data-component', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('warns once, naming the attribute', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate('<div data-param-label="x"></div>');
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('data-param-label');
+    });
+
+    it('says nothing when the component attribute is there', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate(`<div data-component="'card'" data-param-label="x"></div>`);
+
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('warns once however many orphaned elements there are', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        annotate('<div data-param-a="x"></div><div data-param-b="y"></div>');
+
+        expect(warn).toHaveBeenCalledOnce();
+    });
+});

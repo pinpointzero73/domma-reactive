@@ -378,3 +378,66 @@ describe('lifecycle', () => {
         expect(host.querySelector('b')).toBe(first);
     });
 });
+
+describe('failure is never fatal', () => {
+    beforeEach(() => resetComponentWarnings());
+
+    it('warns once for an unknown component and leaves the host empty', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const {host} = mount(`<div data-component="'nope'"></div><p>after</p>`, {});
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('nope');
+        expect(host.querySelector('p').textContent).toBe('after');
+    });
+
+    it('warns once when the name is not a string', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mount(`<div data-component="n"></div>`, {n: 42});
+        expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it('says that a literal name needs quotes, because that is the likely mistake', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mount(`<div data-component="n"></div>`, {n: 42});
+        expect(warn.mock.calls[0][0]).toContain("data-component=\"'my-thing'\"");
+    });
+
+    it('warns once when create() throws, and renders nothing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<b>x</b>', create: () => { throw new Error('boom'); }});
+
+        const {host} = mount(`<div data-component="'probe'"></div>`, {});
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(host.querySelector('b')).toBeNull();
+    });
+
+    it('warns but completes teardown when dispose() throws', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {
+            template: '<b>x</b>',
+            create: () => ({dispose() { throw new Error('boom'); }})
+        });
+
+        const {controller, host} = mount(`<div data-component="'probe'"></div>`, {});
+        expect(() => controller.destroy()).not.toThrow();
+
+        expect(warn).toHaveBeenCalled();
+        expect(host.querySelector('b')).toBeNull();
+    });
+
+    it('warns once for data-param-* with no data-component', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mount(`<div data-param-a="x"></div>`, {x: 1});
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('data-param-a');
+    });
+
+    it('does not warn for data-param-* alongside a data-component', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<b data-bind-text="a"></b>'});
+        mount(`<div data-component="'probe'" data-param-a="x"></div>`, {x: 1});
+        expect(warn).not.toHaveBeenCalled();
+    });
+});

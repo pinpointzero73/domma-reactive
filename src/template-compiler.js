@@ -754,6 +754,26 @@ export function annotate(rawTemplate, options = {}) {
         );
     }
 
+    // Params with nothing to give them to. Said here rather than at render time
+    // because the element is never claimed by any handler, so nothing downstream
+    // would ever look at it — and the symptom is a component that renders with
+    // every param undefined, which is indistinguishable from a typo in the
+    // component name.
+    for (const tag of rawTemplate.matchAll(OPEN_TAG)) {
+        const attrBlob = tag[2] || '';
+        if (!attrBlob.includes('data-param-')) continue;
+        if (/\sdata-component\s*=/.test(attrBlob)) continue;
+
+        const orphan = /\s(data-param-[\w-]+)/.exec(attrBlob);
+        warn(
+            'orphan-param',
+            `${orphan === null ? 'data-param-*' : orphan[1]} does nothing on an element with no ` +
+            'data-component. Check the component attribute is present and spelled correctly — ' +
+            'and remember its value is an expression, so a literal name takes quotes: ' +
+            'data-component="\'my-thing\'"'
+        );
+    }
+
     // ── Pass 1: wrap every region with comment anchors ────────────────────
     //
     // A region is a mustache block or an element carrying a region attribute
