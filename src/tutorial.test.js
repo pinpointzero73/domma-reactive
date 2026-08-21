@@ -39,9 +39,10 @@ const MARKUP = `
             data-options-caption="'All groups'"></select>
 
     <ul id="list" data-each="visible.value key=id">
-        <li data-component="'contact-row'"
-            data-param-contact="$data"
-            data-param-remove="$parent.remove"></li>
+        <li data-component="'contact-row'" data-param-contact="$data">
+            <button class="del" data-slot="actions"
+                    data-on-click="$parent.remove($data)">Delete</button>
+        </li>
     </ul>
 
     <!-- dm if: empty.value -->
@@ -58,16 +59,15 @@ function registerContactRow() {
                    data-model="contact.name.value" data-focus="editing.value">
             <span class="group">{{contact.group.value}}</span>
             <button class="edit-btn" data-on-click="edit">Edit</button>
-            <button class="del" data-on-click="remove">Delete</button>`,
+            {{#slot actions}}{{/slot}}`,
 
-        create({contact, remove}) {
+        create({contact}) {
             const editing = observable(false);
 
             return {
                 contact,
                 editing,
-                edit() { editing.value = true; },
-                remove() { remove(contact); }
+                edit() { editing.value = true; }
             };
         }
     });
@@ -464,6 +464,59 @@ describe('Tutorial.md - step 11, the row as a component', () => {
         flushSync();
 
         contacts.remove(contacts.value[0]);
+        flushSync();
+
+        const rows = all('#list li');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].querySelector('.edit')).toBe(input);
+        expect(input.value).toBe('Grace H');
+    });
+});
+
+describe('Tutorial.md - step 12, the page supplies the row actions', () => {
+    function twoRows() {
+        const {vm, make, contacts} = createApp();
+        contacts.push(make({name: 'Ada', email: 'ada@example.com'}));
+        contacts.push(make({name: 'Grace', email: 'grace@example.com'}));
+        handle = applyBindings(vm, one('#app'));
+        flushSync();
+        return {vm, contacts};
+    }
+
+    it('renders the projected Delete button inside each card', () => {
+        twoRows();
+
+        expect(all('#list .del')).toHaveLength(2);
+        expect(all('#list .del')[0].textContent).toBe('Delete');
+    });
+
+    it('deletes through the page-owned button, with no callback param', () => {
+        const {contacts} = twoRows();
+
+        fire(all('#list .del')[0], 'click');
+        flushSync();
+
+        expect(contacts.value.map((c) => c.name.value)).toEqual(['Grace']);
+    });
+
+    it('places the button after the card own Edit button', () => {
+        twoRows();
+
+        const row = all('#list li')[0];
+        const buttons = [...row.querySelectorAll('button')].map((b) => b.className);
+        expect(buttons).toEqual(['edit-btn', 'del']);
+    });
+
+    it('keeps a card mid-edit intact when a sibling is deleted', () => {
+        twoRows();
+
+        fire(all('#list .edit-btn')[1], 'click');
+        flushSync();
+        const input = all('#list li')[1].querySelector('.edit');
+        type(input, 'Grace H');
+        flushSync();
+
+        fire(all('#list .del')[0], 'click');
         flushSync();
 
         const rows = all('#list li');

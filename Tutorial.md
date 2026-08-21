@@ -1,7 +1,7 @@
 # Tutorial - build a contacts system
 
 A step-by-step build of a working contacts page: add, edit in place, search, filter, delete, remember
-everything across a reload, and extract the row into a reusable component. About 120 lines of JavaScript and one HTML file.
+everything across a reload, and extract the row into a reusable component the page can pass markup into. About 120 lines of JavaScript and one HTML file.
 
 Every listing below is real. The finished application is transcribed into [`src/tutorial.test.js`](src/tutorial.test.js)
 and runs on every `npm test`, so if a change to the package breaks this page, something goes red.
@@ -10,17 +10,18 @@ and runs on every `npm test`, so if a change to the package breaks this page, so
 
 | Step | Feature |
 |------|---------|
-| [1](#step-1--the-shape-of-a-contact) | `observable`, `observableArray` |
-| [2](#step-2--show-the-list) | `applyBindings`, `data-each`, keyed reconciliation |
-| [3](#step-3--add-a-contact) | `data-model`, `data-on-submit`, `computed` for validation |
-| [4](#step-4--the-two-drop-downs) | `data-options`, `data-options-caption` |
-| [5](#step-5--search-that-waits-for-you-to-stop-typing) | `.extend({rateLimit})` |
-| [6](#step-6--edit-in-place) | `data-if`, `data-focus`, per-item bindings |
-| [7](#step-7--delete) | `$parent`, `$data`, `observableArray.remove` |
-| [8](#step-8--the-empty-state) | virtual bindings - `<!-- dm if: … -->` |
-| [9](#step-9--remember-it) | `effect` + `localStorage` |
-| [10](#step-10--tidying-up) | disposal |
-| [11](#step-11--make-the-row-a-component) | `registerComponent`, `data-component`, params |
+| [1](#step-1---the-shape-of-a-contact) | `observable`, `observableArray` |
+| [2](#step-2---show-the-list) | `applyBindings`, `data-each`, keyed reconciliation |
+| [3](#step-3---add-a-contact) | `data-model`, `data-on-submit`, `computed` for validation |
+| [4](#step-4---the-two-drop-downs) | `data-options`, `data-options-caption` |
+| [5](#step-5---search-that-waits-for-you-to-stop-typing) | `.extend({rateLimit})` |
+| [6](#step-6---edit-in-place) | `data-if`, `data-focus`, per-item bindings |
+| [7](#step-7---delete) | `$parent`, `$data`, `observableArray.remove` |
+| [8](#step-8---the-empty-state) | virtual bindings - `<!-- dm if: … -->` |
+| [9](#step-9---remember-it) | `effect` + `localStorage` |
+| [10](#step-10---tidying-up) | disposal |
+| [11](#step-11---make-the-row-a-component) | `registerComponent`, `data-component`, params |
+| [12](#step-12---let-the-page-supply-the-rows-actions) | `{{#slot}}`, `data-slot`, projected content |
 
 ---
 
@@ -633,6 +634,88 @@ deliberate.
 
 ---
 
+## Step 12 - let the page supply the row's actions
+
+Look at what Step 11 had to do to make Delete work. The card renders the button:
+
+```html
+<button class="del" data-on-click="remove">Delete</button>
+```
+
+but the card cannot delete anything - the list is not its to change. So the page passes a function in:
+
+```html
+<li data-component="'contact-row'"
+    data-param-contact="$data"
+    data-param-remove="$parent.remove"></li>
+```
+
+and the card wraps it back up again:
+
+```javascript
+remove() { remove(contact); }
+```
+
+Three pieces of machinery, all so a button the card does not own can appear inside it. Let the page write the button
+instead.
+
+Give the card a slot in `app.js`:
+
+```javascript
+        <button class="edit-btn" data-on-click="edit">Edit</button>
+        {{#slot actions}}{{/slot}}`,
+
+    create({contact}) {
+        const editing = observable(false);
+
+        return {
+            contact,
+            editing,
+            edit() { editing.value = true; }
+        };
+    }
+```
+
+and put the button in `index.html`, inside the row:
+
+```html
+<ul id="list" data-each="visible.value key=id">
+    <li data-component="'contact-row'" data-param-contact="$data">
+        <button class="del" data-slot="actions"
+                data-on-click="$parent.remove($data)">Delete</button>
+    </li>
+</ul>
+```
+
+`data-param-remove` and the card's `remove()` both disappear. The page behaves exactly as it did.
+
+### What just happened
+
+**The button went where its behaviour already was.** `$parent.remove($data)` is the same expression Step 7 used before
+there was a component at all. It works here because projected content is compiled by the *page*, in the row context it
+is written in - so `$data` is still the contact and `$parent` is still the view model. The card is not involved.
+
+**The card stopped deciding what a row can do.** Adding an Archive button now means editing `index.html`, not the
+component. That is the difference a slot makes: `{{#slot actions}}` says *something goes here* without saying what.
+
+**Two scopes, one hole.** Everything inside `{{#slot actions}}` in the template would read the card's view model;
+everything the page projects reads the page. Here the slot is empty and the page fills it, so `$parent.remove` resolves
+against the page - which is why no callback was needed.
+
+If the card wanted a sensible default it would put one between the tags:
+
+```html
+{{#slot actions}}<button data-on-click="edit">Edit</button>{{/slot}}
+```
+
+and that button, being the card's own markup, would call the card's `edit()`.
+
+**The keyed list still holds.** Delete a contact and the card being edited keeps its DOM node, its caret and its
+half-typed name - now with the page's own button riding along inside it. The projected content is moved, never rebuilt,
+so it survives everything the reconciler does around it.
+
+---
+
 ## The finished files
 
 ### `index.html`
@@ -657,9 +740,10 @@ deliberate.
     </div>
 
     <ul id="list" data-each="visible.value key=id">
-        <li data-component="'contact-row'"
-            data-param-contact="$data"
-            data-param-remove="$parent.remove"></li>
+        <li data-component="'contact-row'" data-param-contact="$data">
+            <button class="del" data-slot="actions"
+                    data-on-click="$parent.remove($data)">Delete</button>
+        </li>
     </ul>
 
     <!-- dm if: empty.value -->
@@ -699,16 +783,15 @@ registerComponent('contact-row', {
                data-model="contact.name.value" data-focus="editing.value">
         <span class="group">{{contact.group.value}}</span>
         <button class="edit-btn" data-on-click="edit">Edit</button>
-        <button class="del" data-on-click="remove">Delete</button>`,
+        {{#slot actions}}{{/slot}}`,
 
-    create({contact, remove}) {
+    create({contact}) {
         const editing = observable(false);
 
         return {
             contact,
             editing,
-            edit() { editing.value = true; },
-            remove() { remove(contact); }
+            edit() { editing.value = true; }
         };
     }
 });
@@ -804,6 +887,8 @@ const handle = applyBindings(vm, document.querySelector('#app'));
 | Editing an object in place changes nothing | The change gate compares old and new, which are the same reference | Produce a new value |
 | `data-component` warns that the name is not a string | A binding value is an expression, so it read a *variable* | `data-component="'contact-row'"` |
 | A card's params are all `undefined` | `data-param-*` on an element with no `data-component` | Check the component attribute is there and spelled right |
+| Projected markup does not appear | The component has no `{{#slot}}`, or the names do not match | Look for the warning - it names the slot it could not find |
+| Projected content reads the wrong data | It resolves against the **page**, not the card | That is the rule; pass a param if the card must supply it |
 | An edit inside a card does not reach the page | The param passed a copy: `data-param-name="name.value"` | Pass the observable: `data-param-contact="$data"` |
 
 Nothing in the binding layer throws on bad input. Every failure above logs exactly one warning naming the
@@ -817,6 +902,7 @@ expression, and skips that binding alone.
 - [Coming from Knockout](README.md#coming-from-knockout) - a spelling-by-spelling map
 - [Keyed lists](README.md#keyed-lists) - what reconciliation guarantees, and what it does not
 - [Components](README.md#components) - both param spellings, `$component`, swapping and disposal
+- [Slots](README.md#slots) - fallback content, the two-scopes rule, and why it is a block not an element
 - [Expressions](README.md#expressions) - exactly what a binding value may contain, and why the list stops there
 
 If you would rather generate the markup than annotate it, `compile()` is the same machinery pointed the other way:
