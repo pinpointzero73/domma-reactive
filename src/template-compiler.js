@@ -560,7 +560,7 @@ let factorySeq = 0;
  * @returns {Object} factory
  */
 function factoryFrom(source, label, render, options, idPrefix) {
-    const {annotated, bindings} = annotate(source, {
+    const {annotated, bindings, slots} = annotate(source, {
         ...options,
         itemForms: true,
         template: label,
@@ -572,6 +572,7 @@ function factoryFrom(source, label, render, options, idPrefix) {
     return {
         content: parseFragment(toSkeleton(annotated, bindings)),
         bindings,
+        slots,
         render,
         label,
         options,

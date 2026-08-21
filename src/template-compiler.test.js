@@ -549,3 +549,19 @@ describe('{{#slot}}', () => {
         expect(bindings[0].blockKind).toBe('if');
     });
 });
+
+describe('componentFactory slots', () => {
+    it('carries the templates slots', () => {
+        const factory = componentFactory(
+            '<div>{{#slot header}}h{{/slot}}{{#slot}}d{{/slot}}</div>',
+            'component probe', render, {}
+        );
+
+        expect(factory.slots.map((s) => s.name)).toEqual(['header', '']);
+    });
+
+    it('is an empty array for a template with no slots', () => {
+        const factory = componentFactory('<b>x</b>', 'component probe', render, {});
+        expect(factory.slots).toEqual([]);
+    });
+});
