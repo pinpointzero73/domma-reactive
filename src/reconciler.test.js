@@ -17,11 +17,13 @@
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-import {compile, resetUnkeyedWarnings} from './template-compiler.js';
+import {compile, componentFactory, resetUnkeyedWarnings} from './template-compiler.js';
 import {flushSync, liveComputations} from './graph.js';
 import {liveDisposers} from './lifecycle.js';
 import {observable, observableArray} from './observable.js';
-import {resetReconcilerWarnings} from './reconciler.js';
+import {createInstance, resetReconcilerWarnings} from './reconciler.js';
+import {createComponentContext, createRootContext} from './context.js';
+import {render} from './support/mini-render.js';
 
 let host;
 
@@ -1094,5 +1096,30 @@ describe('ancestor names through a real nested render', () => {
 
     it('renders empty past the end rather than throwing', () => {
         expect(() => nested('<b data-bind-text="$parents[99].name"></b>')).not.toThrow();
+    });
+});
+
+describe('createInstance with a caller-supplied context', () => {
+    it('uses the supplied context rather than building a child one', () => {
+        const factory = componentFactory('<b data-bind-text="label"></b>', 'test', render, {});
+        const vm = {label: 'ada'};
+        const parent = createRootContext({});
+
+        const instance = createInstance(factory, parent, vm, null, null, {
+            context: createComponentContext(parent, vm)
+        });
+
+        expect(instance.runtime.context().$component).toBe(vm);
+        expect(instance.runtime.context().$data).toBe(vm);
+        instance.dispose();
+    });
+
+    it('builds a child context when none is supplied, as a list item needs', () => {
+        const factory = componentFactory('<b data-bind-text="label"></b>', 'test', render, {});
+        const instance = createInstance(factory, createRootContext({}), {label: 'ada'}, 2, 5);
+
+        expect(instance.runtime.context().$component).toBeNull();
+        expect(instance.runtime.context().$index).toBe(2);
+        instance.dispose();
     });
 });

@@ -99,14 +99,23 @@ export function resetReconcilerWarnings() {
  * contents whenever it likes, and a cached array of "the item's nodes" would go
  * stale the first time it did. Walking between two comments cannot.
  *
+ * ── The optional context ─────────────────────────────────────────────────────
+ *
+ * A component instance is a list item in every respect except which context it
+ * resolves against: `createComponentContext` rather than `createChildContext`.
+ * Rather than teach this function what a component is, the caller supplies the
+ * context it wants and everything else here is untouched.
+ *
  * @param {Object} factory       from the compiler: {content, bindings, render, …}
  * @param {Object} parentContext the enclosing binding context
  * @param {*} item
  * @param {number} index
  * @param {number} length
+ * @param {{context?: Object}} [options] `context` overrides the child context
+ *                                       this would otherwise build
  * @returns {Object} the instance
  */
-export function createInstance(factory, parentContext, item, index, length) {
+export function createInstance(factory, parentContext, item, index, length, options = {}) {
     const open = document.createComment('dm:item');
     const close = document.createComment('/dm:item');
 
@@ -122,7 +131,7 @@ export function createInstance(factory, parentContext, item, index, length) {
     const runtime = createRuntime({
         bindings,
         render: factory.render,
-        context: createChildContext(parentContext, item, index, length),
+        context: options.context ?? createChildContext(parentContext, item, index, length),
         getRoots: () => rangeNodes(open, close),
         reactive: true,
         label: factory.label
