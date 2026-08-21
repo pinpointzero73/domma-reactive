@@ -778,3 +778,108 @@ describe('slots through a swap', () => {
         unregisterComponent('probe-b');
     });
 });
+
+describe('slot failures are never fatal', () => {
+    beforeEach(() => resetComponentWarnings());
+
+    it('warns once for content naming a slot the component has not got', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<div>{{#slot}}{{/slot}}</div>'});
+
+        const {host} = mount(`<div data-component="'probe'"><b data-slot="nope">x</b></div>`, {});
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('nope');
+        expect(host.querySelector('b')).toBeNull();
+    });
+
+    it('warns once when a component has slot content but no slot', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<div>no slot here</div>'});
+
+        mount(`<div data-component="'probe'"><b>orphan</b></div>`, {});
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn.mock.calls[0][0]).toContain('probe');
+    });
+
+    it('warns once for two default slots, and fills the first', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {
+            template: '<div class="a">{{#slot}}{{/slot}}</div><div class="b">{{#slot}}{{/slot}}</div>'
+        });
+
+        const {host} = mount(`<div data-component="'probe'"><b>x</b></div>`, {});
+
+        expect(warn).toHaveBeenCalledOnce();
+        expect(host.querySelector('.a b')).not.toBeNull();
+        expect(host.querySelector('.b b')).toBeNull();
+    });
+
+    it('says nothing when a slot is simply left empty', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<div>{{#slot}}<i>d</i>{{/slot}}</div>'});
+
+        mount(`<div data-component="'probe'"></div>`, {});
+
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('says nothing about the whitespace that indented markup produces', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        registerComponent('probe', {template: '<div>{{#slot a}}{{/slot}}</div>'});
+
+        mount(`<div data-component="'probe'">\n    <b data-slot="a">x</b>\n</div>`, {});
+
+        expect(warn).not.toHaveBeenCalled();
+    });
+});
+
+describe('slots through applyBindings', () => {
+    /** Activate a component in DOM that already exists. */
+    function activateSlots(markup, data) {
+        const node = parseFragment(`<div>${markup}</div>`).firstElementChild;
+        document.body.appendChild(node);
+        return {host: node, handle: applyBindings(data, node)};
+    }
+
+    it('projects content in already-rendered DOM', () => {
+        registerComponent('probe', {template: '<div class="frame">{{#slot}}{{/slot}}</div>'});
+
+        const {host, handle} = activateSlots(
+            `<div data-component="'probe'"><b data-bind-text="who">x</b></div>`, {who: 'Ada'}
+        );
+
+        expect(host.querySelector('.frame b').textContent).toBe('Ada');
+        handle.dispose();
+    });
+
+    it('keeps projected content bound to the outer context', () => {
+        registerComponent('probe', {template: '<div class="frame">{{#slot}}{{/slot}}</div>'});
+
+        const who = observable('Ada');
+        const {host, handle} = activateSlots(
+            `<div data-component="'probe'"><b data-bind-text="who.value">x</b></div>`, {who}
+        );
+
+        who.value = 'Grace';
+        flushSync();
+
+        expect(host.querySelector('.frame b').textContent).toBe('Grace');
+        handle.dispose();
+    });
+
+    it('projects named slots here too', () => {
+        registerComponent('probe', {
+            template: '<header>{{#slot header}}{{/slot}}</header><main>{{#slot}}{{/slot}}</main>'
+        });
+
+        const {host, handle} = activateSlots(
+            `<div data-component="'probe'"><h2 data-slot="header">H</h2><p>B</p></div>`, {}
+        );
+
+        expect(host.querySelector('header h2').textContent).toBe('H');
+        expect(host.querySelector('main p').textContent).toBe('B');
+        handle.dispose();
+    });
+});
