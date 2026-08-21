@@ -11,6 +11,7 @@ import {describe, expect, it} from 'vitest';
 import {
     CONTEXT_KEYS,
     createChildContext,
+    createComponentContext,
     createRootContext,
     isContext,
     toContext
@@ -145,10 +146,10 @@ describe('§5: the four names resolve outside a block too', () => {
 });
 
 describe('CONTEXT_KEYS', () => {
-    it('lists exactly the seven names, and nothing has drifted', () => {
+    it('lists exactly the eight names, and nothing has drifted', () => {
         expect([...CONTEXT_KEYS].sort())
             .toEqual([
-                '$data', '$index', '$length', '$parent',
+                '$component', '$data', '$index', '$length', '$parent',
                 '$parentContext', '$parents', '$root'
             ]);
     });
@@ -248,5 +249,55 @@ describe('$parents', () => {
 
         expect(typeof descriptor.get).toBe('function');
         expect(descriptor.enumerable).toBe(true);
+    });
+});
+
+describe('$component', () => {
+    it('is null at the root', () => {
+        expect(createRootContext({a: 1}).$component).toBeNull();
+    });
+
+    it('is null in a child of a root', () => {
+        const root = createRootContext({a: 1});
+        expect(createChildContext(root, {b: 2}).$component).toBeNull();
+    });
+
+    it('is the view model inside a component context', () => {
+        const vm = {name: 'ada'};
+        const ctx = createComponentContext(createRootContext({}), vm);
+        expect(ctx.$component).toBe(vm);
+        expect(ctx.$data).toBe(vm);
+    });
+
+    it('is inherited by child contexts, as $root is', () => {
+        const vm = {name: 'ada'};
+        const component = createComponentContext(createRootContext({title: 't'}), vm);
+        const row = createChildContext(component, {id: 1}, 0, 1);
+
+        expect(row.$component).toBe(vm);
+        expect(row.$data).toEqual({id: 1});
+        expect(row.$parent).toBe(vm);
+    });
+
+    it('is a context key, so an expression may not be written through it', () => {
+        expect(CONTEXT_KEYS.has('$component')).toBe(true);
+    });
+
+    it('links $parentContext, so $parents walks across a component boundary', () => {
+        const root = createRootContext({title: 't'});
+        const vm = {name: 'ada'};
+        const component = createComponentContext(root, vm);
+        const row = createChildContext(component, {id: 1}, 0, 1);
+
+        expect(component.$parentContext).toBe(root);
+        expect(component.$parents).toEqual([{title: 't'}]);
+        expect(row.$parents).toEqual([vm, {title: 't'}]);
+    });
+
+    it('is not a list item, so $index and $length are null', () => {
+        const inList = createChildContext(createRootContext({}), {id: 1}, 3, 9);
+        const ctx = createComponentContext(inList, {});
+        expect(ctx.$index).toBeNull();
+        expect(ctx.$length).toBeNull();
     });
 });

@@ -41,6 +41,20 @@
  * Knockout has both names, for both reasons, and arrived at them the same way
  * round.
  *
+ * ── $component, which is inherited rather than shadowed ──────────────────────
+ *
+ * A component's template resolves `$data` against its own view model, which is
+ * what makes the common case read naturally. But a list inside that template
+ * moves `$data` on to the row, and the component's own state becomes
+ * unreachable — the same problem `$parent` solves for lists, met one layer up.
+ *
+ * `$component` is therefore inherited by `createChildContext` exactly as `$root`
+ * is, so it keeps answering however deep the nesting goes. That is its whole
+ * purpose: at the top of a component template it is merely a synonym for
+ * `$data`, and a name that only worked there would not be worth having.
+ *
+ * It is `null` outside a component, so the §5 rule holds for it too.
+ *
  * ── Contexts are frozen ──────────────────────────────────────────────────────
  *
  * A context is a statement about where in the tree an expression sits. It is not
@@ -75,7 +89,8 @@
  * context name resolves everywhere still holds.
  */
 export const CONTEXT_KEYS = new Set([
-    '$data', '$root', '$parent', '$index', '$length', '$parents', '$parentContext'
+    '$data', '$root', '$parent', '$index', '$length', '$parents', '$parentContext',
+    '$component'
 ]);
 
 /**
@@ -110,6 +125,33 @@ function buildParents(ctx) {
 }
 
 /**
+ * Attach the memoised `$parents` getter, then freeze.
+ *
+ * Shared by the two builders that sit below a root, because both need the same
+ * lazy walk and a second copy would be the kind of duplication that survives
+ * until exactly one of them gains a fix.
+ *
+ * Defined rather than assigned so it can be a getter, and enumerable so a
+ * context still spreads and serialises exactly as it did. Freezing does not stop
+ * the closure variable being written, so the memo survives it.
+ *
+ * @param {Object} ctx a context still under construction, with $parentContext set
+ * @returns {Object} the same object, frozen
+ */
+function sealWithParents(ctx) {
+    let parents = null;
+
+    Object.defineProperty(ctx, '$parents', {
+        enumerable: true,
+        get() {
+            return parents ??= buildParents(ctx);
+        }
+    });
+
+    return Object.freeze(ctx);
+}
+
+/**
  * The top-level context for a data object.
  *
  * `$root` is the same object as `$data` - at the root they are by definition the
@@ -122,7 +164,7 @@ function buildParents(ctx) {
 export function createRootContext(data) {
     return Object.freeze({
         $data: data, $root: data, $parent: null, $index: null, $length: null,
-        $parents: NO_PARENTS, $parentContext: null
+        $parents: NO_PARENTS, $parentContext: null, $component: null
     });
 }
 
@@ -146,28 +188,54 @@ export function createRootContext(data) {
  */
 export function createChildContext(parent, data, index = null, length = null) {
     const base = toContext(parent);
-    let parents = null;
 
-    const ctx = {
+    return sealWithParents({
         $data: data,
         $root: base.$root,
         $parent: base.$data,
         $index: index === undefined ? null : index,
         $length: length === undefined ? null : length,
-        $parentContext: base
-    };
-
-    // Defined rather than assigned so it can be a getter, and enumerable so a
-    // context still spreads and serialises exactly as it did. Freezing does not
-    // stop the closure variable being written, so the memo survives it.
-    Object.defineProperty(ctx, '$parents', {
-        enumerable: true,
-        get() {
-            return parents ??= buildParents(ctx);
-        }
+        $parentContext: base,
+        // Inherited rather than recomputed, exactly as $root is, and for the
+        // same reason: the name has to keep answering however deep the nesting
+        // goes, which is the only thing it is for.
+        $component: base.$component ?? null
     });
+}
 
-    return Object.freeze(ctx);
+/**
+ * The context inside a component's template.
+ *
+ * `$data` is the view model, so a template reads its own state unqualified, and
+ * `$component` is the same object — the point of the name is that it survives
+ * into nested blocks, where `$data` no longer refers to the component. It is
+ * inherited by `createChildContext` for exactly that reason, as `$root` is.
+ *
+ * `$index` and `$length` are null: a component is not a list item, even when one
+ * happens to be rendered inside a list. A component that wants to know its row
+ * should be passed it as a param.
+ *
+ * `$parentContext` points at the enclosing context, so `$parents` walks straight
+ * out of the component and on up the page. A component is a boundary for `$data`
+ * and nothing else — the ancestry names deliberately see through it, because a
+ * component rendered inside a list is still inside that list.
+ *
+ * @param {Object|*} parent     the enclosing context, or plain data
+ * @param {*}        viewModel  what the template resolves names against
+ * @returns {Object} frozen
+ */
+export function createComponentContext(parent, viewModel) {
+    const base = toContext(parent);
+
+    return sealWithParents({
+        $data: viewModel,
+        $root: base.$root,
+        $parent: base.$data,
+        $index: null,
+        $length: null,
+        $parentContext: base,
+        $component: viewModel
+    });
 }
 
 /**
