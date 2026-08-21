@@ -39,7 +39,7 @@ instead and the component swaps when the value changes.
 **One broken binding never takes the page down.** A binding whose expression will not parse logs a single warning naming
 the expression and the template, and is skipped. Everything else keeps working.
 
-About **20 KB gzipped**, with no dependencies, MIT-licensed, and 903 tests.
+About **20 KB gzipped**, with no dependencies, MIT-licensed, and 915 tests.
 
 ## What it isn't
 
@@ -91,7 +91,7 @@ Or as a plain script — the UMD bundle exposes the global `DommaReactive`:
 |------|--------|------|
 | `dist/domma-reactive.min.js` | UMD, minified — `browser`, `<script>` | 58 KB, **20 KB gzipped** |
 | `dist/domma-reactive.cjs` | UMD — `require()` | 58 KB |
-| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 307 KB (comments intact; your bundler minifies) |
+| `dist/domma-reactive.esm.js` | ES module, unminified — `import` | 308 KB (comments intact; your bundler minifies) |
 
 The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
 Node or a worker. Only the compiler functions touch `document`, and only when called.
@@ -1476,7 +1476,7 @@ is the one remaining thing on the parity list.
 
 ```bash
 npm test           # watch
-npm run test:run   # once — 903 tests, including the finished app from Tutorial.md
+npm run test:run   # once — 915 tests, including the finished app from Tutorial.md
 npm run build      # dist/
 npm run test:dist  # verify all 31 exports through require(), import() and <script>
 ```
