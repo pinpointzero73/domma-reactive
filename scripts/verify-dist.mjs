@@ -73,6 +73,8 @@ const EXPECTED = [
     'unregisterBinding',
     'registerExtender',
     'unregisterExtender',
+    'registerComponent',
+    'unregisterComponent',
     'createRootContext',
     'createChildContext',
     'applyBindings'

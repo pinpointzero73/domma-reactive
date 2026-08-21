@@ -50,9 +50,9 @@ const SURFACE = [
     'effect', 'evaluateAst', 'evaluateExpression', 'expressionDependencies',
     'flushSync', 'isEqual',
     'observable', 'observableArray', 'parseExpression', 'registerBinding',
-    'registerExtender', 'registerHelper', 'renderTemplate',
-    'scanBlocks', 'trackingProxy', 'unregisterBinding', 'unregisterExtender',
-    'unregisterHelper', 'untracked'
+    'registerComponent', 'registerExtender', 'registerHelper', 'renderTemplate',
+    'scanBlocks', 'trackingProxy', 'unregisterBinding', 'unregisterComponent',
+    'unregisterExtender', 'unregisterHelper', 'untracked'
 ];
 
 /**
