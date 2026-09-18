@@ -108,5 +108,23 @@ jobs:
       - name: Run tests
         run: npm run test:run
 
+      # Two routes to the registry, because one setting on npmjs.com is not
+      # always reachable: OIDC needs a Trusted Publisher on the package, and an
+      # automation token needs only the tokens page. Whichever exists is used.
+      #
+      # The token is written to .npmrc at publish time rather than through
+      # setup-node's registry-url, because that would write the same file at
+      # SETUP time - and an empty NODE_AUTH_TOKEN there is what makes npm take
+      # the token path with no credential and 404 instead of falling back to OIDC.
       - name: Publish
-        run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "Publishing with an automation token."
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          else
+            echo "No NPM_TOKEN secret - publishing via OIDC trusted publishing."
+          fi
+          npm publish --access public
+
