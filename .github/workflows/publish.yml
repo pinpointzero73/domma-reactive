@@ -1,0 +1,112 @@
+# Publish domma-reactive to npm via trusted publishing (OIDC).
+#
+# No tokens, no one-time codes: GitHub mints a short-lived OIDC token for this
+# exact workflow, and npm trusts it because the package is configured with a
+# Trusted Publisher pointing back here. That replaces the granular-token path,
+# which npm has withdrawn for direct publishing, and it is the only route that
+# works here - this account has no authenticator app, so a local
+# `npm publish` dies on EOTP every time.
+#
+# Mirrors domma/.github/workflows/publish.yml and
+# domma-cms/.github/workflows/publish.yml; keep the three in step.
+#
+# npm side, once: npmjs.com -> domma-reactive -> Settings -> Trusted Publisher
+#   Provider: GitHub Actions
+#   Organization or user: pinpointzero73
+#   Repository:           domma-reactive
+#   Workflow filename:    publish.yml
+#   Environment:          (leave empty)
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Lets an already-pushed tag be published without re-tagging.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag or ref to publish (e.g. v1.0.1)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write          # required for OIDC; without it npm sees no identity
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      # Deliberately NO registry-url: setup-node would then write an .npmrc
+      # containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, and
+      # with no NODE_AUTH_TOKEN in the environment that resolves to an empty
+      # credential. npm sees a token-shaped auth config, takes the token path
+      # instead of OIDC, and the registry rejects it as 404 on PUT. The default
+      # registry is registry.npmjs.org anyway.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Trusted publishing needs npm >= 11.5.1. setup-node ships whatever npm
+      # came with the Node release, which is older - so upgrade explicitly
+      # rather than relying on the runner image.
+      - name: Use an npm that speaks OIDC
+        run: npm install -g npm@latest
+
+      # If either of these is wrong, npm silently falls back to token auth and
+      # the failure looks like a permissions problem rather than a config one.
+      - name: Check the OIDC prerequisites
+        run: |
+          echo "npm: $(npm --version)  (needs >= 11.5.1 for OIDC)"
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "OIDC token endpoint: present"
+          else
+            echo "::error::No OIDC endpoint - 'id-token: write' permission is missing"
+            exit 1
+          fi
+          echo "--- effective npm auth config ---"
+          npm config list | grep -iE 'registry|auth' || echo "(none - correct for OIDC)"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The tag and package.json must agree, or a mistyped tag silently
+      # publishes the wrong version.
+      - name: Check the tag matches package.json
+        run: |
+          REF="${{ github.event.inputs.ref || github.ref_name }}"
+          PKG="v$(node -p "require('./package.json').version")"
+          echo "ref=$REF package.json=$PKG"
+          if [ "$REF" != "$PKG" ]; then
+            echo "::error::Tag $REF does not match package.json version $PKG"
+            exit 1
+          fi
+
+      # `files` ships dist/, which is gitignored and so absent from a fresh
+      # checkout. prepublishOnly would build it, but building explicitly means
+      # a build failure is reported as one rather than as a publish failure.
+      - name: Build the bundles the package ships
+        run: npm run build
+
+      - name: Check the bundles are actually there
+        run: |
+          for f in dist/domma-reactive.esm.js dist/domma-reactive.cjs dist/domma-reactive.min.js; do
+            test -s "$f" || { echo "::error::$f missing or empty - refusing to publish"; exit 1; }
+          done
+          node scripts/verify-dist.mjs
+          echo "all three bundles present and verified"
+
+      # After the build on purpose: these specs load the BUILT bundle and the
+      # showcase harness renders 90 pages against it, so with no dist they fail
+      # for want of a build rather than for anything wrong with the code.
+      - name: Run tests
+        run: npm run test:run
+
+      - name: Publish
+        run: npm publish --access public
