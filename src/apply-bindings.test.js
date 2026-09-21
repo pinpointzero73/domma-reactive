@@ -182,6 +182,50 @@ describe('data-if detaches the element rather than re-rendering it', () => {
         handle.dispose();
     });
 
+    /**
+     * Reported from the Domma CMS invoice list (2026-09-21): a `data-if` and a
+     * `data-bind-disabled` hung off a computed that derives from ANOTHER
+     * computed applied their first value and then froze, while a third binding
+     * reading a computed over the same chain stayed correct.
+     *
+     * It does not reproduce here, and it did not reproduce in a browser
+     * harness against the built bundle either - so this test is not a
+     * regression guard for a fixed bug. It pins the shape down as SUPPORTED,
+     * so that if the cause is ever found, whatever fixes it has to keep this
+     * passing rather than redefining the chain as unsupported.
+     */
+    it('keeps a two-level computed chain in step across if, disabled and text', () => {
+        serve(`<div>
+            <button id="btn" data-bind-disabled="cannotCreate.value" data-bind-title="title.value">New</button>
+            <div id="setup" data-if="needsSetup.value">
+                <span data-bind-text="setupText.value">x</span>
+                <button data-if="needsIssuer.value">A</button>
+            </div>
+        </div>`);
+
+        const state = {issuers: observable([]), receivers: observable([])};
+        state.needsIssuer   = computed(() => state.issuers.value.length === 0);
+        state.needsReceiver = computed(() => state.receivers.value.length === 0);
+        state.needsSetup    = computed(() => state.needsIssuer.value || state.needsReceiver.value);
+        state.cannotCreate  = computed(() => state.needsSetup.value);
+        state.title         = computed(() => (state.needsSetup.value ? 'blocked' : 'ready'));
+        state.setupText     = computed(() => (state.needsIssuer.value ? 'need issuer' : 'need receiver'));
+
+        const handle = applyBindings(state, host);
+        expect(host.querySelector('#setup')).not.toBeNull();
+        expect(host.querySelector('#btn').disabled).toBe(true);
+
+        state.issuers.value = [{id: 1}];
+        state.receivers.value = [{id: 2}];
+        flushSync();
+
+        expect(host.querySelector('#btn').title).toBe('ready');
+        expect(host.querySelector('#btn').disabled).toBe(false);
+        expect(host.querySelector('#setup')).toBeNull();
+
+        handle.dispose();
+    });
+
     it('puts it back in the right place among its siblings', () => {
         serve('<div><i>1</i><p data-if="open">2</p><i>3</i></div>');
         const vm = {open: true};
