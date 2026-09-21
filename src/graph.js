@@ -189,6 +189,13 @@ export class Computation {
      * @private
      */
     _run() {
+        // Kept so a body that throws can be put back on the graph. Dropping
+        // the links before running is what lets a computation whose branches
+        // changed stop depending on the branch not taken; the cost is that a
+        // body which throws BEFORE its first read ends the run subscribed to
+        // nothing.
+        const previous = new Set(this.deps);
+
         for (const dep of this.deps) dep.subs.delete(this);
         this.deps.clear();
 
@@ -198,6 +205,21 @@ export class Computation {
             return this.fn();
         } catch (err) {
             console.warn(`[Domma Reactive] "${this.label}" threw during evaluation:`, err);
+
+            // Put the old dependencies back, on top of whatever the partial
+            // run managed to collect.
+            //
+            // Without this a throw is PERMANENT: the computation is left
+            // subscribed to nothing, so nothing can ever wake it again, and
+            // the single warning above has long scrolled away by the time
+            // anyone notices that one binding on the page stopped moving
+            // while its neighbours kept working. A transient failure - a
+            // value briefly absent mid-load, a component mid-render - should
+            // cost one evaluation, not the rest of the session.
+            for (const dep of previous) {
+                this.deps.add(dep);
+                dep.subs.add(this);
+            }
             return undefined;
         } finally {
             _active = _stack.pop();

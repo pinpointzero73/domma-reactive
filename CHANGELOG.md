@@ -8,6 +8,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [1.0.1] - 2026-09-21
+
+### Fixed
+
+- **A computation that throws is no longer struck off the graph permanently.**
+  `_run()` drops its dependency links before calling the body - which is what
+  lets a computation whose branches changed stop depending on the branch not
+  taken. The cost was that a body which threw *before reaching its first read*
+  ended the run subscribed to nothing, and nothing could ever wake it again.
+
+  The failure is quiet and it does not look like an error. One binding on the
+  page stops moving while its neighbours carry on updating correctly, and the
+  single `console.warn` that explained it has long scrolled away by the time
+  anybody notices. It needs only a transient fault upstream - a value briefly
+  absent mid-load, a component caught mid-render - to become permanent.
+
+  A throw now costs one evaluation: the previous dependencies are restored on
+  top of whatever the partial run collected, so the computation stays on the
+  graph and gets another chance on the next write.
+
 ## [1.0.0] - 2026-08-21
 
 The same code as 0.8.0, with a promise attached.
