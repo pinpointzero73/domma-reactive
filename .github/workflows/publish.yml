@@ -39,7 +39,7 @@ jobs:
       contents: read
       id-token: write          # required for OIDC; without it npm sees no identity
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
@@ -49,9 +49,9 @@ jobs:
       # credential. npm sees a token-shaped auth config, takes the token path
       # instead of OIDC, and the registry rejects it as 404 on PUT. The default
       # registry is registry.npmjs.org anyway.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       # Trusted publishing needs npm >= 11.5.1. setup-node ships whatever npm
       # came with the Node release, which is older - so upgrade explicitly

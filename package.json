@@ -4,6 +4,9 @@
     "description": "Dependency-tracked reactivity and fine-grained DOM bindings. The reactive core of Domma, usable standalone.",
     "author": "Darryl Waterhouse",
     "license": "MIT",
+    "engines": {
+        "node": ">=24"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/pinpointzero73/domma-reactive.git"
