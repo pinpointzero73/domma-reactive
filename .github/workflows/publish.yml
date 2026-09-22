@@ -7,8 +7,14 @@
 # works here - this account has no authenticator app, so a local
 # `npm publish` dies on EOTP every time.
 #
-# Mirrors domma/.github/workflows/publish.yml and
-# domma-cms/.github/workflows/publish.yml; keep the three in step.
+# Mirrors domma/.github/workflows/publish.yml,
+# domma-cms/.github/workflows/publish.yml and
+# domma-celebrate/.github/workflows/publish.yml; keep the four in step.
+#
+# Worth knowing if a run ever fails with ENEEDAUTH: that is the runner having
+# no credentials of its own, not your local `npm whoami`. A local login is
+# invisible here. It means the Trusted Publisher is missing or does not match
+# the five values below exactly.
 #
 # npm side, once: npmjs.com -> domma-reactive -> Settings -> Trusted Publisher
 #   Provider: GitHub Actions
@@ -16,6 +22,10 @@
 #   Repository:           domma-reactive
 #   Workflow filename:    publish.yml
 #   Environment:          (leave empty)
+#
+# NPM_TOKEN is unset on this repository, and should stay that way: the Publish
+# step below prefers a token when one exists, so adding one silently takes the
+# OIDC path out of service.
 name: Publish to npm
 
 on:
