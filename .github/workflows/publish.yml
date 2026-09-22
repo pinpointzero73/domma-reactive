@@ -22,10 +22,6 @@
 #   Repository:           domma-reactive
 #   Workflow filename:    publish.yml
 #   Environment:          (leave empty)
-#
-# NPM_TOKEN is unset on this repository, and should stay that way: the Publish
-# step below prefers a token when one exists, so adding one silently takes the
-# OIDC path out of service.
 name: Publish to npm
 
 on:
