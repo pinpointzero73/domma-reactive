@@ -3,9 +3,8 @@
 # No tokens, no one-time codes: GitHub mints a short-lived OIDC token for this
 # exact workflow, and npm trusts it because the package is configured with a
 # Trusted Publisher pointing back here. That replaces the granular-token path,
-# which npm has withdrawn for direct publishing, and it is the only route that
-# works here - this account has no authenticator app, so a local
-# `npm publish` dies on EOTP every time.
+# which npm has withdrawn for direct publishing, and it is the route this
+# repository uses - so a release never depends on anyone's local npm login.
 #
 # Mirrors domma/.github/workflows/publish.yml,
 # domma-cms/.github/workflows/publish.yml and
