@@ -49,7 +49,21 @@ jobs:
       - name: Bump ${{ matrix.label }} version (patch)
         run: |
           cd target
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));const parts=(p.version||'0.0.0').split('.').map(n=>parseInt(n||0));parts[2]=(parts[2]||0)+1;p.version=parts.join('.');fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('new version',p.version)"
+          node -e "
+            const fs = require('node:fs');
+            const raw = fs.readFileSync('package.json', 'utf8');
+            const pkg = JSON.parse(raw);
+            // The two targets disagree: domma indents with four spaces,
+            // domma-cms with two. Re-emitting at a fixed width reformatted
+            // every line of whichever one did not match and buried the single
+            // line that changed, so reuse what the file already uses.
+            const indent = (raw.match(/\n(\s+)\"/) || [null, '  '])[1];
+            const parts = (pkg.version || '0.0.0').split('.').map(n => parseInt(n || 0, 10));
+            parts[2] = (parts[2] || 0) + 1;
+            pkg.version = parts.join('.');
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, indent) + '\n');
+            console.log('new version', pkg.version);
+          "
           git add package.json
           git commit -m "chore: bump ${{ matrix.label }} version for domma-reactive ${SRC_LABEL}" || echo "no changes to commit"
           git push --set-upstream origin HEAD
