@@ -1,6 +1,6 @@
 {
     "name": "domma-reactive",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Dependency-tracked reactivity and fine-grained DOM bindings. The reactive core of Domma, usable standalone.",
     "author": "Darryl Waterhouse",
     "license": "MIT",

@@ -8,6 +8,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [1.0.2] - 2026-09-24
+
+### Fixed
+
+- **A computed refreshed early by a lazy pull now still tells its other readers.**
+  A flush recomputes the computations a write reached, in worklist order. When
+  one of them reads a computed that is still dirty, `get()` refreshes that
+  computed on the spot. The flush's own `recompute()` of it then compared
+  against the value it had just been given, found nothing new, and never
+  queued its dependents - so every other reader stayed on the old value, with
+  no warning, until something else happened to wake it.
+
+  The shape is ordinary: a computed that reads another computed AND the source
+  that one is built from, two or more levels down - a chart reading both a
+  filtered list and the raw data behind it. In the Domma CMS manager dashboard
+  it left the KPIs and the site list frozen on the first load while the chart
+  beside them updated.
+
+  `get()` now remembers when a lazy refresh changed the value, and the next
+  `recompute()` reports that change, so propagation continues. A computed's
+  first evaluation is not counted, so the equality short-circuit is unchanged.
+
 ## [1.0.1] - 2026-09-21
 
 ### Fixed
