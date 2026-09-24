@@ -368,6 +368,47 @@ describe('reactive graph - propagation policy', () => {
         }
     });
 
+    it('tells every reader of a computed that was refreshed early by a lazy pull', async () => {
+        // 'outer' reads 'inner' AND the field 'inner' is built from, two levels
+        // down. A write to 'x' queues 'base' and 'outer'; recomputing 'outer'
+        // pulls 'inner' through get(), refreshing it before the worklist reaches
+        // it. The flush's own recompute of 'inner' then compared against that
+        // fresh value, saw no change, and never queued its other dependents -
+        // so the second effect stayed on the old value for good. The shape is
+        // ordinary: a filtered list, and a chart that reads the list and the raw data.
+        const model = bag({x: 0});
+        const base = computed(() => model.get('x'), {label: 'base'});
+        const inner = computed(() => base.get() * 2, {label: 'inner'});
+        const outer = computed(() => inner.get() + model.get('x'), {label: 'outer'});
+        const outerSeen = [];
+        const innerSeen = [];
+
+        effect(() => outerSeen.push(outer.get()));
+        effect(() => innerSeen.push(inner.get()));
+
+        model.set('x', 5);
+        await tick();
+        expect(outerSeen).toEqual([0, 15]);
+        expect(innerSeen).toEqual([0, 10]);
+
+        model.set('x', 6);
+        await tick();
+        expect(innerSeen).toEqual([0, 10, 12]);
+    });
+
+    it('does not count a computed\'s first evaluation as a change', async () => {
+        // The pulled-change flag must not fire on the lazy first read, or the
+        // equality short-circuit would let one spurious propagation through.
+        const model = bag({n: 2});
+        const parity = computed(() => model.get('n') % 2, {label: 'parity'});
+        const downstream = vi.fn(() => parity.get());
+        effect(downstream);
+
+        model.set('n', 4);
+        await tick();
+        expect(downstream).toHaveBeenCalledTimes(1);
+    });
+
     it('terminates a dependency cycle with a warning rather than spinning', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         try {

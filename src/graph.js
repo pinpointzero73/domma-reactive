@@ -234,8 +234,14 @@ export class Computation {
      */
     get() {
         if (this.dirty && !this.disposed) {
+            const previous = this._value;
             this._value = this._run();
             this.dirty = false;
+            // A lazy pull refreshed the value before the flush reached it; remember
+            // that it changed, or recompute() will see nothing new and the flush
+            // will never tell this computation's other dependents.
+            if (this._evaluated && !isEqual(previous, this._value)) this._pulledChange = true;
+            this._evaluated = true;
         }
         this.dep.track();
         return this._value;
@@ -317,7 +323,10 @@ export class Computation {
         this._value = this._run();
         this.dirty = false;
 
-        return { changed: !isEqual(previous, this._value), value: this._value };
+        const changed = this._pulledChange || !isEqual(previous, this._value);
+        this._pulledChange = false;
+        this._evaluated = true;
+        return { changed, value: this._value };
     }
 
     /** Mark stale without recomputing. */
