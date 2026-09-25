@@ -112,6 +112,10 @@ jobs:
           fi
           [ "$STATUS" = 0 ] || exit "$STATUS"
 
+          # A factual stub in the pending release notes, for the reviewer to
+          # edit - so an upgrade can no longer ship unrecorded. See the script.
+          node ../source/scripts/note-repin.mjs "$PACKAGE" "$VERSION" "https://github.com/pinpointzero73/domma-reactive/blob/v$VERSION/CHANGELOG.md"
+
           git diff --stat
 
           git config user.name "github-actions[bot]"
@@ -127,9 +131,9 @@ jobs:
             echo
             echo "$NOTES"
             echo
-            echo "## Before this ships"
+            echo "## Release notes"
             echo
-            echo "Merging does not release Domma. Say what this means for Domma users in \`docs/NEXT_RELEASE.md\`, then run **Cut a release**."
+            echo "This PR already notes the upgrade in \`docs/NEXT_RELEASE.md\` - \"Domma is now built against $PACKAGE $VERSION\" - so the release notes cannot miss it. Edit that to say what it means for Domma users before merging if it is more than a rebuild. Merging does not release Domma; run **Cut a release** for that."
             echo
             echo "---"
             echo "Opened by [Re-pin downstream](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
