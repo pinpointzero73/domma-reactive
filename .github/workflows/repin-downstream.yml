@@ -1,0 +1,139 @@
+# Open a PR in domma that moves its exact pin to a released domma-reactive.
+#
+# Domma pins this package EXACTLY, so a release reaches nobody until that pin
+# moves. This replaces bump-js-and-cms-from-reactive.yml, which fired on the
+# tag, before npm had the version, and opened PRs that bumped domma's and
+# domma-cms's OWN version numbers without touching the dependency at all - the
+# titles said "for domma-reactive vX" and the diffs did not contain it. It also
+# reached domma-cms, which does not depend on this package; it gets it through
+# domma-js, and domma's own release opens that PR.
+#
+# Runs as the last job of publish.yml, so only after a publish succeeded, and
+# can be run by hand for a version that is already out:
+#
+#   Actions → Re-pin downstream → Run workflow → 1.1.0
+#
+# The PR is for review, not auto-merged. Merging it does not release domma;
+# that is domma's own "Cut a release", once its notes say what changed.
+#
+# Needs the CROSS_REPO_PAT secret: a token with contents and pull-request write
+# on pinpointzero73/domma.
+#
+# domma/.github/workflows/repin-downstream.yml is the same workflow one link
+# down the chain, re-pinning domma-js in domma-cms; keep the two in step.
+
+name: Re-pin downstream
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The released domma-reactive version to pin, e.g. 1.1.0'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE: domma-reactive
+  TARGET: pinpointzero73/domma
+
+jobs:
+  repin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${VERSION#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::\"$VERSION\" is not an X.Y.Z version"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # main, not the tag: main holds the released CHANGELOG section too, and a
+      # tag cut before this workflow existed has no promote-changelog.mjs to
+      # print it with.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          path: source
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # npm acknowledges a publish before every registry replica serves it; the
+      # 1.1.0 publish took a few minutes to appear. Installing too early fails
+      # with ETARGET, so wait for it.
+      - name: Wait for npm to serve the version
+        run: |
+          for i in $(seq 1 60); do
+            if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
+              echo "$PACKAGE@$VERSION is on npm"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$PACKAGE@$VERSION did not appear on npm within 10 minutes"
+          exit 1
+
+      - name: Move the pin
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${TARGET}.git" target
+          cd target
+
+          BRANCH="repin/$PACKAGE-$VERSION"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            echo "::error::$TARGET already has a $BRANCH branch - close or merge that PR first"
+            exit 1
+          fi
+          git checkout -b "$BRANCH"
+
+          # Surgical, not `npm install`: the pin and the three lockfile fields,
+          # nothing re-resolved. Exit 3 means the pin is already there.
+          set +e
+          node ../source/scripts/repin.mjs "$PACKAGE" "$VERSION"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" = 3 ]; then
+            echo "$TARGET already pins $PACKAGE $VERSION - nothing to do"
+            exit 0
+          fi
+          [ "$STATUS" = 0 ] || exit "$STATUS"
+
+          git diff --stat
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: $PACKAGE $VERSION"
+          git push -u origin "$BRANCH"
+
+          NOTES=$(node ../source/scripts/promote-changelog.mjs --print "$VERSION" 2>/dev/null || echo "_No CHANGELOG section found for $VERSION._")
+          {
+            echo "Moves the exact \`$PACKAGE\` pin to **$VERSION**, published from ${GITHUB_REPOSITORY}@\`v$VERSION\`."
+            echo
+            echo "## What $VERSION changes"
+            echo
+            echo "$NOTES"
+            echo
+            echo "## Before this ships"
+            echo
+            echo "Merging does not release Domma. Say what this means for Domma users in \`docs/NEXT_RELEASE.md\`, then run **Cut a release**."
+            echo
+            echo "---"
+            echo "Opened by [Re-pin downstream](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+          } > ../body.md
+
+          gh pr create --repo "$TARGET" --base main --head "$BRANCH" \
+            --title "chore: $PACKAGE $VERSION" --body-file ../body.md
