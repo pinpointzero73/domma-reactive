@@ -18,6 +18,9 @@
 #
 # Needs the CROSS_REPO_PAT secret: a token with contents and pull-request write
 # on pinpointzero73/domma.
+#
+# domma/.github/workflows/repin-downstream.yml is the same workflow one link
+# down the chain, re-pinning domma-js in domma-cms; keep the two in step.
 
 name: Re-pin downstream
 
