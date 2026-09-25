@@ -8,7 +8,12 @@
 #
 # Mirrors domma/.github/workflows/publish.yml,
 # domma-cms/.github/workflows/publish.yml and
-# domma-celebrate/.github/workflows/publish.yml; keep the four in step.
+# domma-celebrate/.github/workflows/publish.yml; keep the four in step. The
+# `downstream` job at the bottom is this repository's own and has no mirror.
+#
+# Started two ways, and both publish the same thing: by a pushed v* tag (the
+# local `make release-gh` route), or by cut-release.yml through
+# workflow_dispatch, because a tag that workflow pushes cannot trigger this.
 #
 # Worth knowing if a run ever fails with ENEEDAUTH: that is the runner having
 # no credentials of its own, not your local `npm whoami`. A local login is
@@ -133,3 +138,13 @@ jobs:
           fi
           npm publish --access public
 
+  # Only once the publish has succeeded: domma is told about a version npm
+  # actually has. See repin-downstream.yml.
+  downstream:
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/repin-downstream.yml
+    with:
+      version: ${{ github.event.inputs.ref || github.ref_name }}
+    secrets: inherit

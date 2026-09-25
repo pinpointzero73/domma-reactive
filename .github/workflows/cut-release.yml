@@ -1,0 +1,152 @@
+# Cut a release: the whole of `make bump` → CHANGELOG → commit → preflight →
+# release-gh, from the Actions tab.
+#
+#   Actions → Cut a release → Run workflow → patch / minor / major
+#
+# The one thing it cannot do is write the release notes, so it refuses to run
+# without them: write them under `## [Unreleased]` in CHANGELOG.md as the work
+# lands, and this promotes that heading to the new version.
+#
+# What happens, in order - and nothing is pushed until every check has passed:
+#
+#   1. the next version is worked out from package.json and the bump chosen
+#   2. [Unreleased] becomes [X.Y.Z] - today; package.json + lock are bumped
+#   3. the suite, the packaged-artefact check and the type tests run
+#   4. `Release X.Y.Z[ - summary]` is committed and tagged vX.Y.Z
+#   5. main and the tag are pushed together (--atomic: both or neither)
+#   6. publish.yml is started for the tag
+#
+# Step 6 is explicit because a tag pushed with this workflow's GITHUB_TOKEN
+# does not trigger other workflows - GitHub suppresses that to prevent loops.
+# workflow_dispatch is the documented exception, and publish.yml already takes
+# a ref for exactly this. publish.yml then opens the re-pin PR in domma once
+# the version is on npm; see repin-downstream.yml.
+#
+# `dry_run` does steps 1-4 and prints what it would push. Nothing leaves the
+# runner.
+#
+# The local make targets still work and remain the fallback.
+
+name: Cut a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to bump'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+        required: true
+      summary:
+        description: 'Optional: a few words for the commit title (Release X.Y.Z - <summary>)'
+        type: string
+        required: false
+      dry_run:
+        description: 'Dry run: build, test and commit on the runner, push nothing'
+        type: boolean
+        default: false
+
+# One release at a time. A second click queues behind the first rather than
+# racing it for the same version number.
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write     # push the release commit and tag
+  actions: write      # start publish.yml
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are cut from main, not ${GITHUB_REF}"
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0      # tags, to refuse a version that is already tagged
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Work out the version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          VERSION=$(node -e "
+            const [maj, min, pat] = require('./package.json').version.split('.').map(Number);
+            const next = {major: [maj + 1, 0, 0], minor: [maj, min + 1, 0], patch: [maj, min, pat + 1]}[process.env.BUMP];
+            console.log(next.join('.'));
+          ")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Releasing $(node -p "require('./package.json').version") → $VERSION ($BUMP)"
+
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::Tag v$VERSION already exists"
+            exit 1
+          fi
+          if npm view "domma-reactive@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::domma-reactive@$VERSION is already on npm"
+            exit 1
+          fi
+
+      - name: Promote the release notes
+        run: node scripts/promote-changelog.mjs "$VERSION" "$(date -u +%F)"
+
+      - name: Bump package.json and package-lock.json
+        run: node scripts/bump.mjs "$VERSION"
+
+      # Everything `make preflight` checks that still means something here: the
+      # suite, the built artefacts loaded the three ways consumers load them,
+      # and the declarations compiled against the exports map.
+      - name: Test
+        run: npm run test:run
+
+      - name: Verify the packaged artefacts
+        run: npm run test:dist
+
+      - name: Type tests
+        run: npx tsc -p types/test
+
+      - name: Commit and tag
+        env:
+          SUMMARY: ${{ inputs.summary }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          TITLE="Release $VERSION"
+          if [ -n "$SUMMARY" ]; then TITLE="$TITLE - $SUMMARY"; fi
+
+          git add CHANGELOG.md package.json package-lock.json
+          git commit -m "$TITLE"
+          git tag -a "v$VERSION" -m "domma-reactive $VERSION"
+          git show --stat HEAD
+
+      - name: Dry run - what would have been pushed
+        if: inputs.dry_run
+        run: |
+          echo "Dry run: nothing pushed. Would push main ($(git rev-parse --short HEAD)) and v$VERSION."
+          git show HEAD -- CHANGELOG.md | head -60
+
+      - name: Push main and the tag
+        if: ${{ !inputs.dry_run }}
+        run: git push --atomic origin HEAD:main "v$VERSION"
+
+      - name: Start publish.yml for the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish.yml --ref main -f ref="v$VERSION"
+          echo "Publishing v$VERSION - follow it under Actions → Publish to npm."
