@@ -94,6 +94,9 @@ Or as a plain script - the UMD bundle exposes the global `DommaReactive`:
 | `dist/domma-reactive.cjs` | UMD - `require()` | 60 KB |
 | `dist/domma-reactive.esm.js` | ES module, unminified - `import` | 316 KB (comments intact; your bundler minifies) |
 
+TypeScript declarations ship in the package - nothing to install from `@types`. `observable(0)` is an
+`Observable<number>`, and assigning to a read-only `computed` is a compile error rather than a runtime warning.
+
 The reactive core (`observable`, `computed`, `effect`, expressions, contexts, the renderer) needs **no DOM** and runs in
 Node or a worker. Only the compiler functions touch `document`, and only when called.
 

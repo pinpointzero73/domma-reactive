@@ -19,10 +19,17 @@
     "main": "./dist/domma-reactive.cjs",
     "module": "./dist/domma-reactive.esm.js",
     "browser": "./dist/domma-reactive.min.js",
+    "types": "./dist/domma-reactive.d.ts",
     "exports": {
         ".": {
-            "import": "./dist/domma-reactive.esm.js",
-            "require": "./dist/domma-reactive.cjs",
+            "import": {
+                "types": "./dist/domma-reactive.d.ts",
+                "default": "./dist/domma-reactive.esm.js"
+            },
+            "require": {
+                "types": "./dist/domma-reactive.d.cts",
+                "default": "./dist/domma-reactive.cjs"
+            },
             "default": "./dist/domma-reactive.esm.js"
         },
         "./package.json": "./package.json"
@@ -38,21 +45,24 @@
         "test": "vitest",
         "test:run": "vitest run",
         "test:dist": "npm run build && node scripts/verify-dist.mjs",
-        "prepublishOnly": "npm run test:run && npm run test:dist"
+        "test:types": "npm run build && tsc -p types/test",
+        "prepublishOnly": "npm run test:run && npm run test:dist && tsc -p types/test"
     },
     "keywords": [
         "reactive",
         "observable",
         "computed",
         "dependency-tracking",
+        "typescript",
         "template",
         "bindings",
         "domma"
     ],
     "devDependencies": {
-        "vitest": "^4.0.16",
+        "@rollup/plugin-terser": "^0.4.4",
         "jsdom": "^24.1.3",
         "rollup": "^4.0.0",
-        "@rollup/plugin-terser": "^0.4.4"
+        "typescript": "^7.0.2",
+        "vitest": "^4.0.16"
     }
 }
