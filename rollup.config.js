@@ -19,6 +19,32 @@ const banner =
     `/*! domma-reactive v${version} | MIT | https://github.com/pinpointzero73/domma-reactive */`;
 
 /**
+ * The type declarations, shipped beside the bundles.
+ *
+ * One hand-written source, two copies, and the second copy is not redundant.
+ * Under `"type": "module"` TypeScript reads a `.d.ts` as describing an ES
+ * module, so the same file offered to a `require()` consumer claims the CJS
+ * bundle is ESM - and a `node16`/`nodenext` project then rejects a require that
+ * works perfectly well at runtime. The `.d.cts` copy says CommonJS, which is
+ * what the `require` condition actually resolves to.
+ *
+ * The banner is prepended to both, so a declaration file is no more anonymous
+ * than a bundle is.
+ */
+const types = readFileSync('./types/domma-reactive.d.ts', 'utf8');
+
+function declarations() {
+    return {
+        name: 'declarations',
+        generateBundle() {
+            for (const fileName of ['domma-reactive.d.ts', 'domma-reactive.d.cts']) {
+                this.emitFile({type: 'asset', fileName, source: `${banner}\n${types}`});
+            }
+        }
+    };
+}
+
+/**
  * Three artefacts, because three consumers ask for the code three ways.
  *
  * The `.cjs` extension on the require target is load-bearing, not cosmetic.
@@ -52,7 +78,8 @@ export default {
             // Bundlers and Node import().
             file: 'dist/domma-reactive.esm.js',
             format: 'es',
-            banner
+            banner,
+            plugins: [declarations()]
         }
     ]
 };

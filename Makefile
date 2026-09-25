@@ -1,4 +1,4 @@
-.PHONY: help install test test-watch build verify check pack preflight bump release-npm release-gh clean
+.PHONY: help install test test-watch build verify types check pack preflight bump release-npm release-gh clean
 
 VERSION := $(shell node -p "require('./package.json').version")
 
@@ -13,6 +13,7 @@ help:
 	@echo "    make test-watch   Run the suite in watch mode"
 	@echo "    make build        Build dist/ (UMD, CJS, ESM)"
 	@echo "    make verify       Build, then check the packaged artefacts"
+	@echo "    make types        Build, then compile the type tests"
 	@echo "    make check        test + verify"
 	@echo "    make pack         Create a tarball for local testing (no publish)"
 	@echo "    make clean        Remove dist/ and any stray tarball"
@@ -54,7 +55,10 @@ build:
 verify:
 	npm run test:dist
 
-check: test verify
+types:
+	npm run test:types
+
+check: test verify types
 
 pack:
 	npm run build

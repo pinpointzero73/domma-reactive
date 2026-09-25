@@ -8,6 +8,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [Unreleased]
+
+### Added
+
+- **TypeScript declarations.** The package now ships `dist/domma-reactive.d.ts`
+  and `dist/domma-reactive.d.cts`, wired through `types` and the `types`
+  condition of each `exports` entry, so `import` and `require()` consumers
+  both resolve them under `nodenext`. They are hand-written in
+  `types/domma-reactive.d.ts` and generic where it counts: `observable(0)` is an
+  `Observable<number>`, `observableArray<Todo>()` types its mutators, and a
+  read-only `computed(fn)` refuses `.value = x` at compile time while
+  `computed({read, write})` accepts it. `npm run test:types` compiles
+  `types/test/` against the packed exports map, and `verify-dist` now fails if
+  a runtime export is missing from either declaration file.
+
 ## [1.0.2] - 2026-09-24
 
 ### Fixed

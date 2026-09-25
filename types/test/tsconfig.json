@@ -1,0 +1,19 @@
+{
+    // Compile-only. These files are never run; a type error IS the failure.
+    //
+    // `nodenext` is the strictest resolution there is, and the one that tells a
+    // `.d.ts` from a `.d.cts` - so both files below import the package by NAME,
+    // through the exports map in package.json, exactly as a consumer would.
+    // Importing ../domma-reactive.d.ts directly would test the declarations and
+    // skip the packaging, which is the half most likely to be wrong.
+    "compilerOptions": {
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+        "target": "es2022",
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": false,
+        "types": []
+    },
+    "files": ["esm.mts", "cjs.cts"]
+}

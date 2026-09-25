@@ -343,8 +343,11 @@ await check('declared entry points all exist on disk', () => {
         ['main', pkg.main],
         ['module', pkg.module],
         ['browser', pkg.browser],
-        ['exports["."].import', pkg.exports?.['.']?.import],
-        ['exports["."].require', pkg.exports?.['.']?.require],
+        ['types', pkg.types],
+        ['exports["."].import.types', pkg.exports?.['.']?.import?.types],
+        ['exports["."].import.default', pkg.exports?.['.']?.import?.default],
+        ['exports["."].require.types', pkg.exports?.['.']?.require?.types],
+        ['exports["."].require.default', pkg.exports?.['.']?.require?.default],
         ['exports["."].default', pkg.exports?.['.']?.default]
     ];
 
@@ -412,13 +415,32 @@ await check('no dynamic code construction in any bundle (CSP: script-src \'self\
     }
 });
 
+// The declarations are hand-written, so nothing but this stops a new export
+// shipping untyped. Both copies are checked: the `.d.cts` is the one a
+// CommonJS project reads, and it is emitted separately.
+await check('every export is declared in both type files', () => {
+    const files = [pkg.exports['.'].import.types, pkg.exports['.'].require.types];
+
+    for (const relative of files) {
+        const source = readFileSync(join(root, relative), 'utf8');
+        const undeclared = EXPECTED.filter((name) => !new RegExp(
+            `^export (?:declare )?(?:function|class|const) ${name}\\b`, 'm'
+        ).test(source));
+        assert(undeclared.length === 0, `${relative} does not declare ${undeclared.join(', ')}`);
+    }
+});
+
 // A built file is otherwise anonymous - handed one, there is no way to tell
 // which release it is, and a stale dist/ is indistinguishable from a fresh
 // one. Asserting the banner here is what makes it a fact rather than a
 // decoration: if the version and the artefacts disagree, one of them was not
 // rebuilt.
 await check(`every bundle is stamped v${pkg.version}`, () => {
-    for (const relative of [pkg.main, pkg.module, pkg.browser]) {
+    const stampedFiles = [
+        pkg.main, pkg.module, pkg.browser,
+        pkg.exports['.'].import.types, pkg.exports['.'].require.types
+    ];
+    for (const relative of stampedFiles) {
         const head = readFileSync(join(root, relative), 'utf8').slice(0, 200);
         const stamped = head.match(/domma-reactive v(\d+\.\d+\.\d+)/);
 
