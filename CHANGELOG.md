@@ -8,6 +8,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [Unreleased]
+
+### Changed
+
+- **Nothing in the package.** The published code and type declarations are
+  identical to 1.1.0. This is the first release cut end to end by the new
+  release workflow: it bumps, tests, tags and publishes from CI, and the PR it
+  opens in Domma now carries a release-notes entry for the upgrade.
+
 ## [1.1.0] - 2026-09-25
 
 ### Added
