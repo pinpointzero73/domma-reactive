@@ -590,10 +590,11 @@ writes nothing.
 <p data-bind-style="look"></p>                     <!-- {color, fontWeight, …} -->
 ```
 
-Knockout writes `style: {color: shade}` and gets object literals free, because it compiles binding strings with the
-`Function` constructor. This expression language has no object literal and will not grow one - parsing `{…}` safely is
-most of the way to the `eval` the package exists to avoid. So the single-property case gets its own attribute, which is
-the common one anyway, and the object case takes an object the view model already holds. In an object, camelCase keys
+Knockout writes `style: {color: shade}` because it compiles binding strings with the `Function` constructor. Since 1.2
+this expression language parses plain object literals too (see [Expressions](#what-it-supports)), so
+`data-bind-style="{color: shade}"` works - but the single-property attribute stays the recommended spelling: it is the
+common case, it reads one property at a time, and the object case can equally take an object the view model already
+holds. In an object, camelCase keys
 are converted; in the attribute they are kebab-cased, because an HTML attribute name is lowercased by the parser and
 `data-bind-style-fontWeight` would arrive as `fontweight`.
 
@@ -651,7 +652,8 @@ element focusable and read by a screen reader would be lying; use `data-bind-hid
 ```
 
 Truthiness is mustache truthiness, so an **empty array is falsy** and `{{#if items}}` and `data-if="items"` cannot
-disagree. Toggling re-renders the element rather than stashing and restoring it, so bindings inside it can never go
+disagree. Read the observable's value - `data-if="isOpen.value"` when `isOpen` is an observable. Naming the observable
+itself is caught: see [An observable is not its value](#an-observable-is-not-its-value). Toggling re-renders the element rather than stashing and restoring it, so bindings inside it can never go
 stale - at the cost of node identity across a toggle, exactly as `{{#if}}` has always behaved.
 
 ### `data-options`
@@ -799,6 +801,28 @@ mentions the name pays nothing for it.
 
 Both are frozen, as every context is. Writing to `$parents[0]` or to a context reached through `$parentContext` logs one
 warning and does nothing - write to ancestor *data* instead, which `$parents[1].name = x` does.
+
+### An observable is not its value
+
+A binding reads a *value*. `data-if="show"`, where `show` is an `observable(false)`, names the observable object itself -
+and every object is truthy, so before 1.2 the content rendered and nothing said why. Now a binding whose expression
+resolves to an observable, an observable array or a computed:
+
+- warns **once**, naming the expression and the fix: `"show" is an observable, not its value - use "show.value"`;
+- reads it as **empty** - fail closed: `data-if` and `{{#if}}` hide, `data-bind-disabled` / `-hidden` / `-checked` are
+  off, text and attributes are written as `''`, never `"[object Object]"`.
+
+The same holds when the observable is an *operand*: `!show`, `count > 3`, `active && 'on'`. The whole expression reads as
+`undefined` - so `!show` cannot flip open either - with one warning naming the operand.
+
+```html
+<p data-if="show">Never shown, with one warning</p>
+<p data-if="show.value">Shown when show is true</p>
+```
+
+There is no automatic unwrapping, on purpose: one spelling, `.value`, everywhere. Two deliberate exceptions, where the
+observable itself is what is wanted: a keyed list takes an `observableArray` directly (`{{#each rows key=id}}`,
+`data-each="rows key=id"`), and `data-param-*` passes whatever it is given to a component, by reference.
 
 ### Known limits
 
@@ -964,9 +988,8 @@ damage.
 ```
 
 This is the pair [`data-bind-style`](#data-bind-name) established and `data-options-*` followed, and it exists for the
-same reason: Knockout spells params as an object literal, and object literals are exactly what this expression language
-[refuses](#what-it-does-not-support-and-will-not). One param named in an attribute is the common case, and it is the one
-an object literal makes awkward.
+same reason: Knockout spells params as an object literal. `data-params="{a: b}"` parses since 1.2, but one param named in
+an attribute is the common case, and it is the one an object literal makes awkward.
 
 Both forms may appear together. They merge, and **a named attribute beats the same key in the object** - the more
 specific spelling wins. A collision warns once, because it is almost always a mistake.
@@ -1191,8 +1214,9 @@ Every binding gets its own effect, so a view model built from observables update
 `handle.update(data)` re-runs everything.
 
 Note `data-model="query.value"`, not `data-model="query"` - `query` holds an observable, and the
-[no-unwrapping rule](#data-model) applies in a binding exactly as it does in JavaScript. Binding the bare name would
-show `[object Object]` in the input and replace the observable on the first keystroke.
+[no-unwrapping rule](#data-model) applies in a binding exactly as it does in JavaScript. Binding the bare name warns
+(["An observable is not its value"](#an-observable-is-not-its-value)), leaves the input empty, and would replace the
+observable on the first keystroke.
 
 | | |
 |---|---|
@@ -1264,7 +1288,9 @@ reopens.
 
 Two limits, both warned about rather than silent: an opener with no `<!-- /dm -->` is skipped, and a virtual binding
 **inside a virtual list's body** is not read - that body is compiled as a template, and the compiler knows mustache, not
-comments. Use `{{#if}}` inside a list body, or `data-if` on an element.
+comments. Its content is **left out** of every row (fail closed: before 1.2 it rendered unconditionally, so a hidden
+`<!-- dm if -->` showed in every row). Use `{{#if flag}}` inside a list body - it is scoped to the item - or `data-if` on
+an element.
 
 ## The renderer
 
@@ -1352,6 +1378,8 @@ expressionDependencies('$parent.name');       // Set {} - position, not state
 |---------------|--------------------------------------------------|
 | Paths         | `a`, `a.b.c`, `a[0]`, `a[key]`, `a['x']`         |
 | Literals      | `'str'`, `"str"`, `1`, `1.5`, `1e3`, `true`, `false`, `null` |
+| Objects       | `{a: x, 'b-c': y}` - name or string keys          |
+| Arrays        | `[a, b, 'c']`, and `[a, b][i]`                    |
 | Arithmetic    | `+ - * / %` (`+` also concatenates)              |
 | Comparison    | `=== !== < <= > >=`                              |
 | Logical       | `&& \|\| !` - short-circuiting                    |
@@ -1362,12 +1390,19 @@ expressionDependencies('$parent.name');       // Set {} - position, not state
 
 Precedence and associativity are JavaScript's. `1 + 2 * 3` is 7; `10 - 3 - 2` is 5. Nesting is capped at 64 levels.
 
+Object and array literals build a **fresh** value on every evaluation, so a binding never shares one object between
+renders. They are deliberately plain: no computed keys (`{[k]: 1}`), no shorthand (`{a}`), no spread, no methods, no
+holes (`[1,,2]`) and no trailing commas - each refused with a message saying so - and `__proto__`, `constructor` and
+`prototype` are refused as keys, so a literal is no way round the read guard. Use them in attribute bindings and helper
+calls (`data-bind-style="{color: tone}"`, `{{fmt(price, {currency: 'GBP'})}}` inside an attribute). Inside `{{ }}` text a
+closing `}}` ends the interpolation, so keep literals with braces out of mustache text.
+
 ### What it does not support, and will not
 
 Assignment. `new`. Member calls - `user.toUpperCase()` does not work, and neither does `alert(1)`; the only callable
 things are helpers you registered. (`data-on-*` is the single exception, and only because an event fires outside every
 effect - see [`data-on-<event>`](#data-on-event).) Loose equality (`==`), nullish coalescing (`??`), regular expressions,
-object and array literals, template literals, comma sequences. Reads of `__proto__`, `constructor` and `prototype`, in
+template literals, comma sequences. Reads of `__proto__`, `constructor` and `prototype`, in
 any form - including `a[key]` where `key` holds `'__proto__'` at runtime.
 
 Most of those are recognised specifically so they can be refused with a message that says what to do instead. Anything
@@ -1510,8 +1545,10 @@ The three differences worth knowing before you start:
 - **`key=` is how lists reconcile.** Knockout's `foreach` diffs by identity automatically; here you name the key, and
   `data-each` insists on one.
 - **No `unsafe-eval` required.** Knockout compiles binding strings with the `Function` constructor, which a strict
-  Content Security Policy blocks outright. This parses them instead - which is also why there are no object literals in
-  a binding, and why `style` and `options` are spelled with companion attributes rather than with `{…}`.
+  Content Security Policy blocks outright. This parses them instead. Plain object literals parse (`{color: shade}`), but
+  `style` and `options` are still spelled with companion attributes, which read more clearly one property at a time.
+- **An observable is not its value.** Knockout unwraps `if: show`; here `data-if="show"` names the observable object, so
+  it warns and fails closed. Write `show.value`.
 
 ## Things that will catch you
 
@@ -1522,6 +1559,8 @@ Every one of these was hit while building the example app above.
 | Ticking a checkbox changes nothing | A plain field on a list item is not reactive | `done: observable(false)`, and bind `done.value` |
 | `{{name}}` renders literally | `applyBindings` never interpolates mustache | `data-bind-text="name"` |
 | `data-each` renders nothing, with a warning | No `key=` | `data-each="rows key=id"` |
+| `data-if="show"` never shows, with a warning naming `show.value` | `show` is the observable, not its value | `data-if="show.value"` |
+| `<!-- dm if -->` content missing from every row of a virtual list | Virtual bindings are not read inside a list body | `{{#if flag}}` inside the body |
 | `{{total.get()}}` will not parse | An expression cannot call a method | `total.value`, which is the same read |
 | A binding is silently skipped | Its expression did not parse; look for the warning | The warning names the source and the template |
 | Effects keep running after the DOM is gone | Nothing disposed them | `handle.dispose()` / `controller.destroy()` |
@@ -1540,7 +1579,7 @@ This is a reactivity and binding layer. It is **not** a framework: there is no r
 server-side-rendering hydration beyond `applyBindings`, and no devtools.
 
 Deliberate omissions, each with its reasoning above: no scope-chain lookup, no `data-bind-html`, no observable
-unwrapping, no `eval`-backed expressions, and no object literals in a binding. None of these is waiting on anything, and
+unwrapping, and no `eval`-backed expressions. None of these is waiting on anything, and
 the spellings here differ from Knockout's on purpose and will go on differing.
 
 One thing is a refinement rather than an omission: list placement is in order rather than

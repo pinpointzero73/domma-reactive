@@ -876,11 +876,12 @@ const handle = applyBindings(vm, document.querySelector('#app'));
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| A field shows `[object Object]` | Bound the observable, not its value | `data-model="name.value"` |
+| A field is empty, with a warning saying `use "name.value"` | Bound the observable, not its value | `data-model="name.value"` |
+| A `data-if` never shows, with the same warning | `data-if="editing"` names the observable - an object - so it fails closed | `data-if="editing.value"` |
 | Ticking a checkbox changes nothing | The field on the item is not reactive | `done: observable(false)`, bind `done.value` |
 | `{{name}}` appears literally on the page | `applyBindings` never interpolates mustache, except inside a `data-each` body | `data-bind-text="name.value"` |
 | The list renders nothing, with a warning | No `key=` | `data-each="rows.value key=id"` |
-| `data-options` renders nothing | Handed the observable rather than the array | `data-options="groups.value"` |
+| `data-options` renders nothing, with a warning | Handed the observable rather than the array | `data-options="groups.value"` |
 | The caption looks for a variable | A binding value is an expression | `data-options-caption="'All groups'"` |
 | `{{total.get()}}` will not parse | An expression cannot call a method | `total.value` |
 | A binding is silently skipped | Its expression did not parse - look for the warning | The warning names the expression |

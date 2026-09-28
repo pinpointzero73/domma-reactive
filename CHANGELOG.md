@@ -8,6 +8,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **A bare observable in a binding fails closed, with one warning.** `data-if="show"`
+  with `show = observable(false)` rendered its content: the binding read the
+  observable object itself, and an object is truthy. Observables, observable
+  arrays and computeds now carry a (non-enumerable, registered-symbol) brand, and
+  a binding whose expression resolves to one warns once - `"show" is an
+  observable, not its value - use "show.value"` - and reads it as empty: hidden,
+  off, `''` for text and attributes (never `"[object Object]"`). As an operand
+  (`!show`, `count > 3`, `active && 'on'`) it makes the whole expression
+  `undefined`, so negation cannot flip it open. The string renderer does the
+  same. Unchanged: a keyed list still takes an `observableArray` directly, event
+  bindings are untouched, and component params still pass by reference.
+- **A virtual block inside a virtual list's body is left out.** A
+  `<!-- dm if -->` inside `<!-- dm each -->` warned, then rendered its content in
+  every row. It is now dropped from the item template; the warning still names
+  `{{#if flag}}` in the body as the fix.
+
+### Added
+
+- **Object and array literals in expressions.** `{a: x, 'b-c': y}` and
+  `[a, b]`, built fresh on every evaluation. Name or string keys only; computed
+  keys, shorthand, spread, methods, holes and trailing commas are refused with a
+  positioned message, and `__proto__`, `constructor` and `prototype` are refused
+  as keys. Still a hand-written parser - no `eval`, no `Function`.
+
 ## [1.1.1] - 2026-09-27
 
 ### Changed

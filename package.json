@@ -1,7 +1,7 @@
 {
     "name": "domma-reactive",
     "version": "1.1.1",
-    "description": "Dependency-tracked reactivity and fine-grained DOM bindings. The reactive core of Domma, usable standalone.",
+    "description": "Dependency-tracked reactivity and fine-grained DOM bindings, with a CSP-safe expression language (no eval). The reactive core of Domma, usable standalone.",
     "author": "Darryl Waterhouse",
     "license": "MIT",
     "engines": {
@@ -14,7 +14,7 @@
     "bugs": {
         "url": "https://github.com/pinpointzero73/domma-reactive/issues"
     },
-    "homepage": "https://github.com/pinpointzero73/domma-reactive#readme",
+    "homepage": "https://reactive.dommajs.org",
     "type": "module",
     "main": "./dist/domma-reactive.cjs",
     "module": "./dist/domma-reactive.esm.js",
@@ -56,6 +56,10 @@
         "typescript",
         "template",
         "bindings",
+        "data-binding",
+        "knockout",
+        "csp",
+        "no-eval",
         "domma"
     ],
     "devDependencies": {
