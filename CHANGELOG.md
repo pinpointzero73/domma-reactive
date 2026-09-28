@@ -10,6 +10,8 @@ contemporaneous notes.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-28
+
 ### Fixed
 
 - **One cause, one message for bindings inside an unkeyed block.** A behaviour binding inside an unkeyed
