@@ -10,6 +10,8 @@ contemporaneous notes.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-28
+
 ### Fixed
 
 - **A bare observable in a binding fails closed, with one warning.** `data-if="show"`
