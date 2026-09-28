@@ -58,6 +58,7 @@
  * mutating it would corrupt the others.
  */
 
+import {isReactive} from './brand.js';
 import {CONTEXT_KEYS, toContext} from './context.js';
 
 const PREFIX = '[Domma Reactive]';
@@ -180,7 +181,7 @@ const IDENT_PART = /[\p{ID_Continue}$\u200C\u200D]/u;
 const PUNCTUATORS = [
     '===', '!==', '&&', '||', '<=', '>=', '??', '==', '!=',
     '<', '>', '+', '-', '*', '/', '%', '!', '?', ':', '.', ',',
-    '(', ')', '[', ']', '='
+    '(', ')', '[', ']', '{', '}', '='
 ];
 
 /**
@@ -475,10 +476,68 @@ function parseSource(source, allowMethodCalls = false) {
                 expect(')');
                 return inner;
             }
-            if (token.value === '[') fail('array literals are not supported');
+            if (token.value === '[') {
+                i++;
+                return node({type: 'ArrayLiteral', elements: Object.freeze(parseList(']'))});
+            }
+            if (token.value === '{') {
+                i++;
+                return parseObject();
+            }
         }
 
         return fail(`unexpected ${describe(token)}`);
+    }
+
+    /**
+     * `a, b, c` up to the closing punctuator. No holes, no spread, no trailing
+     * comma - the same shape as a helper call's argument list.
+     */
+    function parseList(close) {
+        const items = [];
+        if (!at(close)) {
+            do {
+                if (at(close)) fail(`a trailing comma before "${close}" is not supported`);
+                items.push(parseExpr(0));
+            } while (eat(','));
+        }
+        expect(close);
+        return items;
+    }
+
+    /**
+     * `{key: expr, 'quoted key': expr}` - a plain object literal and nothing
+     * more. Keys are names or strings; computed keys, shorthand, spread and
+     * methods are refused with a message saying so. The blocked keys that
+     * guard member reads (`__proto__`, `constructor`, `prototype`) are refused
+     * here too: an object literal must not be a way round them.
+     */
+    function parseObject() {
+        const entries = [];
+        if (!at('}')) {
+            do {
+                if (at('}')) fail('a trailing comma before "}" is not supported');
+                const token = peek();
+                let key;
+                if (token.type === 'ident' || token.type === 'str') {
+                    key = String(token.value);
+                } else if (token.type === 'punct' && token.value === '[') {
+                    fail('computed keys are not supported in an object literal');
+                } else if (token.type === 'punct' && token.value === '.') {
+                    fail('spread is not supported in an object literal');
+                } else {
+                    fail(`expected a property name but found ${describe(token)}`);
+                }
+                if (BLOCKED_KEYS.has(key)) fail(`the key "${key}" is not allowed`);
+                i++;
+                if (at(',') || at('}')) fail(`shorthand properties are not supported - write ${key}: ${key}`);
+                if (at('(')) fail('methods are not supported in an object literal');
+                expect(':');
+                entries.push(Object.freeze({key, value: parseExpr(0)}));
+            } while (eat(','));
+        }
+        expect('}');
+        return node({type: 'ObjectLiteral', entries: Object.freeze(entries)});
     }
 
     function parsePostfix(left) {
@@ -597,6 +656,10 @@ function childrenOf(current) {
             return [current.test, current.consequent, current.alternate];
         case 'Call':
             return current.args;
+        case 'ArrayLiteral':
+            return current.elements;
+        case 'ObjectLiteral':
+            return current.entries.map((entry) => entry.value);
         case 'MethodCall':
             return current.computed
                 ? [current.object, current.property, ...current.args]
@@ -701,6 +764,33 @@ function evaluateCall(name, args) {
  * @param {Object} context normalised
  * @param {number} depth
  */
+/**
+ * An operand that is an observable itself, not its value, is always a slip -
+ * `!show`, `active && 'on'`, `count > 3` with `.value` left off. An object is
+ * truthy and compares as NaN, so the expression would quietly produce the
+ * wrong answer. Instead the WHOLE expression reads as `undefined` (fail
+ * closed - `!show` must not flip to true either) and it says so once per place
+ * in the expression. See brand.js.
+ */
+const warnedOperands = new WeakSet();
+
+/** Unwinds the walk; evaluateAst turns it into `undefined`, quietly. */
+class ReactiveOperand extends Error {}
+
+function operand(value, from) {
+    if (!isReactive(value)) return value;
+    if (!warnedOperands.has(from)) {
+        warnedOperands.add(from);
+        const name = from.type === 'Identifier' ? from.name
+            : from.type === 'Member' && !from.computed ? `…${from.property}` : 'an operand';
+        console.warn(
+            `${PREFIX} "${name}" is an observable used in an expression, not its value - ` +
+            `use "${name}.value". The expression reads as undefined until then.`
+        );
+    }
+    throw new ReactiveOperand(name);
+}
+
 function evaluateNode(current, context, depth) {
     if (depth > MAX_DEPTH) {
         throw new ExpressionError(`evaluation nests deeper than ${MAX_DEPTH} levels`);
@@ -722,7 +812,7 @@ function evaluateNode(current, context, depth) {
         }
 
         case 'Unary': {
-            const value = evaluateNode(current.argument, context, depth + 1);
+            const value = operand(evaluateNode(current.argument, context, depth + 1), current.argument);
             switch (current.operator) {
                 case '!': return !value;
                 case '-': return -value;
@@ -734,7 +824,7 @@ function evaluateNode(current, context, depth) {
             // Short-circuiting is a semantic guarantee, not an optimisation:
             // `user && user.name` must not read the property when there is no
             // user, and `ok || warn()` must not call the helper when ok.
-            const left = evaluateNode(current.left, context, depth + 1);
+            const left = operand(evaluateNode(current.left, context, depth + 1), current.left);
             if (current.operator === '&&') {
                 return left ? evaluateNode(current.right, context, depth + 1) : left;
             }
@@ -742,8 +832,8 @@ function evaluateNode(current, context, depth) {
         }
 
         case 'Binary': {
-            const left = evaluateNode(current.left, context, depth + 1);
-            const right = evaluateNode(current.right, context, depth + 1);
+            const left = operand(evaluateNode(current.left, context, depth + 1), current.left);
+            const right = operand(evaluateNode(current.right, context, depth + 1), current.right);
             switch (current.operator) {
                 case '+': return left + right;
                 case '-': return left - right;
@@ -760,7 +850,7 @@ function evaluateNode(current, context, depth) {
         }
 
         case 'Conditional':
-            return evaluateNode(current.test, context, depth + 1)
+            return operand(evaluateNode(current.test, context, depth + 1), current.test)
                 ? evaluateNode(current.consequent, context, depth + 1)
                 : evaluateNode(current.alternate, context, depth + 1);
 
@@ -769,6 +859,26 @@ function evaluateNode(current, context, depth) {
                 current.callee,
                 current.args.map((arg) => evaluateNode(arg, context, depth + 1))
             );
+
+        // A fresh value on every evaluation, so a binding never shares one
+        // object between renders. Keys were checked against BLOCKED_KEYS at
+        // parse time; defineProperty rather than assignment all the same, so
+        // no setter on Object.prototype can ever be reached from here.
+        case 'ArrayLiteral':
+            return current.elements.map((element) => evaluateNode(element, context, depth + 1));
+
+        case 'ObjectLiteral': {
+            const out = {};
+            for (const {key, value} of current.entries) {
+                Object.defineProperty(out, key, {
+                    value: evaluateNode(value, context, depth + 1),
+                    enumerable: true,
+                    writable: true,
+                    configurable: true
+                });
+            }
+            return out;
+        }
 
         // Parsed, but never performed here. The parser accepts `x.foo()` when
         // the caller opts in, which lets the EVENT binding resolve and invoke it
@@ -854,6 +964,7 @@ export function evaluateAst(ast, context) {
         // here is promoted to a root context before the walk begins.
         return evaluateNode(ast, toContext(context), 0);
     } catch (err) {
+        if (err instanceof ReactiveOperand) return undefined;   // already warned, once
         const source = sources.get(ast);
         console.warn(
             `${PREFIX} expression ${source === undefined ? '(not from parseExpression) ' : `"${source}" `}` +

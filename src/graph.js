@@ -34,6 +34,7 @@
  */
 
 import { isEqual } from './equal.js';
+import { REACTIVE } from './brand.js';
 
 // ── Tracking stack ────────────────────────────────────────────────────────────
 // `_active` is the computation currently evaluating. Any Dep read while it is
@@ -536,6 +537,10 @@ export function trackingProxy(target, depFor, options = {}) {
 }
 
 // ── Public constructors ───────────────────────────────────────────────────────
+
+// Every computation is reactive (see brand.js): a binding that evaluates to
+// one has left `.value` off.
+Object.defineProperty(Computation.prototype, REACTIVE, {value: true, enumerable: false});
 
 /**
  * Create a lazily-evaluated derived value.

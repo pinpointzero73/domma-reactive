@@ -13,6 +13,7 @@
  * the DOM at all.
  */
 
+import {brand} from './brand.js';
 import {Dep} from './graph.js';
 import {isEqual} from './equal.js';
 import {applyExtenders} from './extenders.js';
@@ -242,7 +243,7 @@ export function observable(initial, options = {}) {
     };
 
     path.attach(api);
-    return api;
+    return brand(api);
 }
 
 // ── Array ─────────────────────────────────────────────────────────────────────
@@ -538,5 +539,5 @@ export function observableArray(initial = [], options = {}) {
         };
     }
 
-    return api;
+    return brand(api);
 }

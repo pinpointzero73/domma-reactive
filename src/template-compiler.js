@@ -59,6 +59,7 @@
  * turns a string into DOM.
  */
 
+import {guardReactive} from './brand.js';
 import {toContext} from './context.js';
 import {compileExpression, expressionDependencies, parseExpression} from './expression.js';
 import {bindingHandler, claimAttribute} from './handlers.js';
@@ -725,7 +726,11 @@ function prepareExpression(source, handler, options) {
 
     return {
         ast,
-        evaluate: compileExpression(source, parseOptions),
+        evaluate: guardReactive(compileExpression(source, parseOptions), {
+            expr: source,
+            where: options?.template ? `template "${options.template}"` : '',
+            handler
+        }),
         deps: handler.tracks === false ? new Set() : expressionDependencies(ast)
     };
 }

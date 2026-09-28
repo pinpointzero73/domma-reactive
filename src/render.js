@@ -45,6 +45,7 @@
  * documented, explicit opt-out. Nothing here decides whether data is safe.
  */
 
+import {isReactive} from './brand.js';
 import {evaluateExpression} from './expression.js';
 
 /** {{#kind expr}} - a block opener. */
@@ -176,6 +177,26 @@ function resolvePath(data, path) {
  * @returns {*}
  */
 function valueOf(source, data, options) {
+    const value = rawValueOf(source, data, options);
+    if (!isReactive(value)) return value;
+
+    // A string render has no effect to track an observable through, and an
+    // observable object would print as "[object Object]" or count as true.
+    // Empty, and one warning per expression. See brand.js.
+    const expr = source.trim();
+    if (!warnedReactive.has(expr)) {
+        warnedReactive.add(expr);
+        console.warn(
+            `[Domma Reactive] "${expr}" is an observable, not its value - use "${expr}.value". ` +
+            'It renders as empty until then.'
+        );
+    }
+    return undefined;
+}
+
+const warnedReactive = new Set();
+
+function rawValueOf(source, data, options) {
     const expr = source.trim();
 
     if (expr === '.') {

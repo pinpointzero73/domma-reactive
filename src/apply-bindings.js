@@ -76,6 +76,7 @@
  * worse than none, because it reads as if it did the job.
  */
 
+import {guardReactive} from './brand.js';
 import {toContext} from './context.js';
 import {effect} from './graph.js';
 import {bindingHandler, claimAttribute} from './handlers.js';
@@ -351,7 +352,7 @@ export function applyBindings(data, rootElement, options = {}) {
 
         return {
             ast,
-            evaluate: compileExpression(source, options),
+            evaluate: guardReactive(compileExpression(source, options), {expr: source, where: options.template, handler}),
             deps: handler.tracks === false ? new Set() : expressionDependencies(ast)
         };
     }
@@ -481,7 +482,7 @@ export function applyBindings(data, rootElement, options = {}) {
         const collection = parsed[1].trim();
         const keyPath = parsed[2];
 
-        const prepared = prepare(collection, {expression: true, tracks: true}, EACH_ATTRIBUTE);
+        const prepared = prepare(collection, {expression: true, tracks: true, acceptsReactive: true}, EACH_ATTRIBUTE);
         if (prepared === null) return;
 
         // The item template is the element's initial contents. Taken as source
@@ -538,22 +539,26 @@ export function applyBindings(data, rootElement, options = {}) {
     function liftVirtualBody(block, all) {
         const holder = document.createElement('div');
         for (const node of rangeNodes(block.open, block.close)) holder.appendChild(node);
-        block.body = holder.innerHTML;
 
         // A virtual block inside this body went with it. It cannot be wired -
         // its anchors are no longer in the document - and the compiler does not
-        // read `<!-- dm -->` out of a lifted template, so it is not silently
-        // handled elsewhere either.
+        // read `<!-- dm -->` out of a lifted template. Its content is DROPPED
+        // from the template, anchors and all: rendering it unconditionally (as
+        // this once did) showed rows content meant to be hidden, and a binding
+        // that cannot be honoured must fail closed.
         for (const other of all) {
             if (other === block || !holder.contains(other.open)) continue;
             other.consumed = true;
+            const doomed = [other.open, ...rangeNodes(other.open, other.close), other.close];
+            for (const node of doomed) node.parentNode?.removeChild(node);
             warnOnce(
                 `virtual:nested:${label}:${other.kind}`,
                 `<!-- dm ${other.kind}: ${other.expr} --> is inside a virtual list's body, ` +
-                'which is compiled as a template - virtual bindings are not read there. ' +
-                `Use {{#${other.kind}}} inside the body, or data-if on an element.`
+                'which is compiled as a template - virtual bindings are not read there, so ' +
+                `its content is left out. Use {{#${other.kind}}} inside the body, or data-if on an element.`
             );
         }
+        block.body = holder.innerHTML;
     }
 
     /** Dispatch one virtual block to its implementation. */
@@ -641,7 +646,7 @@ export function applyBindings(data, rootElement, options = {}) {
         const collection = parsed[1].trim();
         const keyPath = parsed[2];
 
-        const prepared = prepare(collection, {expression: true, tracks: true}, '<!-- dm each -->');
+        const prepared = prepare(collection, {expression: true, tracks: true, acceptsReactive: true}, '<!-- dm each -->');
         if (prepared === null) return;
 
         const binding = {

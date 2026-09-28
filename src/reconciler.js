@@ -396,6 +396,9 @@ export function createEachHandler(factoryFor) {
         tracks: true,
         region: true,
         primes: true,
+        // A keyed list takes an observableArray directly (see toArray), so a
+        // bare reactive collection is not a mistake here - brand.js leaves it.
+        acceptsReactive: true,
 
         update({binding, nodes, context, render}) {
             const factory = factoryFor(binding, render);
