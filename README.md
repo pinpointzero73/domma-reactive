@@ -39,7 +39,7 @@ instead and the component swaps when the value changes. [Slots](#slots) let the 
 **One broken binding never takes the page down.** A binding whose expression will not parse logs a single warning naming
 the expression and the template, and is skipped. Everything else keeps working.
 
-About **20 KB gzipped**, with no dependencies, MIT-licensed, and 961 tests.
+About **21 KB gzipped**, with no dependencies, MIT-licensed, and 996 tests.
 
 ## What it isn't
 
@@ -90,9 +90,9 @@ Or as a plain script - the UMD bundle exposes the global `DommaReactive`:
 
 | File | Format | Size |
 |------|--------|------|
-| `dist/domma-reactive.min.js` | UMD, minified - `browser`, `<script>` | 60 KB, **20 KB gzipped** |
-| `dist/domma-reactive.cjs` | UMD - `require()` | 60 KB |
-| `dist/domma-reactive.esm.js` | ES module, unminified - `import` | 316 KB (comments intact; your bundler minifies) |
+| `dist/domma-reactive.min.js` | UMD, minified - `browser`, `<script>` | 65 KB, **21 KB gzipped** |
+| `dist/domma-reactive.cjs` | UMD - `require()` | 65 KB |
+| `dist/domma-reactive.esm.js` | ES module, unminified - `import` | 336 KB (comments intact; your bundler minifies) |
 
 TypeScript declarations ship in the package - nothing to install from `@types`. `observable(0)` is an
 `Observable<number>`, and assigning to a read-only `computed` is a compile error rather than a runtime warning.
@@ -1538,7 +1538,7 @@ deliberate rather than incidental.
 | `$componentTemplateNodes` | `{{#slot}}` in the template, `data-slot` at the usage site |
 | `html: markup` | **none** - `{{{triple-stache}}}`, which says so where you can see it |
 
-The three differences worth knowing before you start:
+The four differences worth knowing before you start:
 
 - **Reads are properties, not calls.** `o.value`, never `o()`. That is what lets a template read an observable at all,
   since the expression language refuses method calls.
@@ -1599,9 +1599,9 @@ compiled against a context that does not exist until mount. Knockout has no equi
 
 ```bash
 npm test           # watch
-npm run test:run   # once - 961 tests, including the finished app from Tutorial.md
+npm run test:run   # once - 996 tests, including the finished app from Tutorial.md
 npm run build      # dist/
-npm run test:dist  # verify all 31 exports through require(), import() and <script>
+npm run test:dist  # verify all 33 exports through require(), import() and <script>
 ```
 
 ## Licence
