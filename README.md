@@ -827,8 +827,9 @@ observable itself is what is wanted: a keyed list takes an `observableArray` dir
 ### Known limits
 
 Bindings inside an **unkeyed** `{{#each}}`, and inside `{{#with}}`, are not bound independently - the block re-renders as
-a whole, and a behaviour binding inside one is skipped with a warning naming the attribute. Add `key=` and every one of
-them works; see [Keyed lists](#keyed-lists).
+a whole, so a behaviour binding inside one is not attached. An unkeyed `{{#each}}` says so in its single "no key="
+warning, naming every binding it dropped - add `key=` and every one of them works; see [Keyed lists](#keyed-lists). Inside
+`{{#with}}` there is no key to add: write the full path (`data-model="obj.field"`) without the block.
 
 `{{> partial}}` inside a keyed block is not expanded. The block body is compiled once into a `<template>`, before any
 render pass exists to resolve a partial against. Inline it, and the compiler says so if you do not.

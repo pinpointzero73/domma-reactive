@@ -767,9 +767,76 @@ describe('the M4 seam - an UNKEYED block still degrades, loudly', () => {
         expect(warn).toHaveBeenCalledWith(
             expect.stringContaining('data-on-click')
         );
-        expect(messages(warn)).toMatch(/reconciler/);
         expect(messages(warn)).toMatch(/key=/);
+        // One cause, one message - and never the old advice to move the binding
+        // out of the block, which sent readers after a limit that is not there.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(messages(warn)).not.toMatch(/outside the block|imperatively|arrive with the reconciler/);
 
+        warn.mockRestore();
+    });
+
+    it('names every dropped binding of one unkeyed block in a single warning', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        compile(
+            '{{#each ys}}<input data-model="v"><b data-bind-text="name"></b>' +
+            '<button data-on-click="go">x</button>{{/each}}',
+            {ys: [{v: 1, name: 'a'}], go() {}},
+            host
+        );
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const text = messages(warn);
+        for (const n of ['data-model', 'data-bind-text', 'data-on-click']) expect(text).toContain(n);
+        expect(text).toMatch(/\{\{#each ys key=id\}\}/);
+        warn.mockRestore();
+    });
+
+    it('says nothing about bindings inside a KEYED block - they bind', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const ctrl = compile(
+            '{{#each zs key=id}}<input data-model="v"><button data-on-click="go">x</button>{{/each}}',
+            {zs: [{id: 1, v: 'a'}], go() {}},
+            host
+        );
+
+        expect(warn).not.toHaveBeenCalled();
+        ctrl.destroy?.();
+        warn.mockRestore();
+    });
+
+    it('still reports dropped bindings when the "no key=" advice is switched off', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        compile(
+            '{{#each qs}}<button data-on-click="go">x</button>{{/each}}',
+            {qs: [{}], go() {}},
+            host,
+            undefined,
+            {warnUnkeyed: false}
+        );
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(messages(warn)).toContain('data-on-click');
+        warn.mockRestore();
+    });
+
+    it('explains a binding inside {{#with}} with the fix that applies there', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        compile(
+            '{{#with obj}}<input data-model="field">{{/with}}',
+            {obj: {field: 'x'}},
+            host
+        );
+
+        const text = messages(warn);
+        expect(text).toContain('data-model');
+        expect(text).toMatch(/\{\{#with\}\}/);
+        expect(text).toMatch(/full path/);
+        expect(text).not.toMatch(/key=/);
         warn.mockRestore();
     });
 

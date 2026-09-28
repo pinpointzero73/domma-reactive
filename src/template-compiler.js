@@ -236,6 +236,15 @@ function insertAll(source, edits) {
 }
 
 /** True when `index` falls inside any [start, end) range. */
+/** The innermost range containing `index` (the one that starts last), or null. */
+function innermostRange(index, ranges) {
+    let best = null;
+    for (const range of ranges) {
+        if (index >= range[0] && index < range[1] && (!best || range[0] > best[0])) best = range;
+    }
+    return best;
+}
+
 function inRanges(index, ranges) {
     for (const [start, end] of ranges) {
         if (index >= start && index < end) return true;
@@ -402,7 +411,7 @@ function shiftingRanges(annotated, regions) {
         if (region.kind !== 'each' && region.kind !== 'with') continue;
         const start = annotated.indexOf(ANCHOR_OPEN(region.id));
         const end = annotated.indexOf(ANCHOR_CLOSE(region.id));
-        if (start !== -1 && end !== -1) ranges.push([start, end]);
+        if (start !== -1 && end !== -1) ranges.push([start, end, region]);
     }
     return ranges;
 }
@@ -658,19 +667,30 @@ export function componentFactory(source, label, render, options) {
  * @param {string} expr
  * @param {Object} options
  */
-function warnUnkeyed(expr, options) {
-    if (options.warnUnkeyed === false) return;
+function warnUnkeyed(expr, options, dropped = []) {
+    // Opting out of the "no key=" advice does not silence bindings that were
+    // dropped because of it - that is a different fact, and a dead data-model
+    // with no message is the failure this warning exists to prevent.
+    if (options.warnUnkeyed === false && dropped.length === 0) return;
 
     const key = `${options.template ?? ''}|${expr}`;
     if (warnedUnkeyed.has(key)) return;
     warnedUnkeyed.add(key);
 
     const where = options.template ? ` in template "${options.template}"` : '';
+    // One cause, one message: the bindings the missing key= cost are named here
+    // rather than in a second warning per attribute, which used to read as "not
+    // supported yet" and advise moving them out of the block.
+    const names = dropped.map(n => `"${n}"`).join(', ');
+    const lost = dropped.length
+        ? `, and its ${names} ${dropped.length === 1 ? 'binding is' : 'bindings are'} not attached`
+        : '';
+    const bindText = dropped.length ? ` - ${dropped.length === 1 ? 'it binds' : 'they bind'} normally once the block has a key` : '';
     console.warn(
         `${PREFIX} {{#each ${expr}}}${where} has no key=, so it re-renders the whole ` +
         `block on every change - losing DOM node identity, focus and uncommitted ` +
-        `input. Write {{#each ${expr} key=id}}, naming whichever property identifies ` +
-        `an item, to reconcile instead.`
+        `input${lost}. Write {{#each ${expr} key=id}}, naming whichever property identifies ` +
+        `an item, to reconcile instead${bindText}.`
     );
 }
 
@@ -929,7 +949,7 @@ export function annotate(rawTemplate, options = {}) {
             continue;
         }
 
-        if (region.mustache && region.kind === 'each') warnUnkeyed(region.expr, options);
+        if (region.mustache && region.kind === 'each') region.unkeyed = true;
 
         regionEdits.push({index: region.start, text: ANCHOR_OPEN(region.id), order: OPENING});
         regionEdits.push({index: region.end, text: ANCHOR_CLOSE(region.id), order: CLOSING});
@@ -1067,6 +1087,9 @@ export function annotate(rawTemplate, options = {}) {
     // markers from the same offset calculation.
     const shifted2 = shiftingRanges(annotated, regions);
     const attrEdits = [];
+    // Behaviour bindings dropped inside an unkeyed {{#each}}, per region - named
+    // in that block's single "no key=" warning after this pass.
+    const droppedByRegion = new Map();
 
     for (const tag of [...annotated.matchAll(OPEN_TAG)]) {
         const attrBlob = tag[2] || '';
@@ -1086,12 +1109,22 @@ export function annotate(rawTemplate, options = {}) {
                 // Regions were anchored in pass 1 and must not be claimed twice.
                 if (claim.handler.region) continue;
                 if (shiftedTag) {
-                    warn(
-                        `shifted:${name}`,
-                        `"${name}" inside an {{#each}} or {{#with}} block is not bound - ` +
-                        'per-item bindings arrive with the reconciler. Move it outside the ' +
-                        'block, or wire it up imperatively for now'
-                    );
+                    const region = innermostRange(tag.index, shifted2)?.[2];
+                    if (region?.unkeyed) {
+                        const list = droppedByRegion.get(region) ?? [];
+                        if (!list.includes(name)) list.push(name);
+                        droppedByRegion.set(region, list);
+                    } else {
+                        // {{#with}} has no key= to add: its body always re-renders
+                        // as a whole. The fix is to leave the block out.
+                        warn(
+                            `shifted:${name}`,
+                            `"${name}" inside a {{#with}} block is not bound: {{#with}} ` +
+                            're-renders its body as a whole, so there is nothing to attach it to. ' +
+                            'Write the full path instead (data-model="obj.field" rather than ' +
+                            'data-model="field" inside {{#with obj}}) and it binds normally.'
+                        );
+                    }
                     continue;
                 }
 
@@ -1163,6 +1196,10 @@ export function annotate(rawTemplate, options = {}) {
         const end = annotated.indexOf(ANCHOR_CLOSE(b.id));
         if (start === -1 || end === -1) continue;
         b.body = annotated.slice(start + openTag.length, end);
+    }
+
+    for (const region of regions) {
+        if (region.unkeyed) warnUnkeyed(region.expr, options, droppedByRegion.get(region) ?? []);
     }
 
     return {annotated, bindings, slots};

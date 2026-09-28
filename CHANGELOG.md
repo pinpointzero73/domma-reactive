@@ -10,6 +10,16 @@ contemporaneous notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **One cause, one message for bindings inside an unkeyed block.** A behaviour binding inside an unkeyed
+  `{{#each}}` used to add its own warning - "per-item bindings arrive with the reconciler. Move it outside the
+  block, or wire it up imperatively" - which read as "not supported yet" and advised the one thing not to do:
+  keyed blocks bind them today. The block's single "no key=" warning now names every binding it dropped and
+  says they bind once the block has a key. Inside `{{#with}}`, where there is no key to add, the warning names
+  the fix that applies there: write the full path without the block. Dropped bindings are reported even when
+  `warnUnkeyed: false` switches the key advice off.
+
 ## [1.2.0] - 2026-09-28
 
 ### Fixed
