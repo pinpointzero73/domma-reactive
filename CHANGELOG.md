@@ -10,6 +10,17 @@ contemporaneous notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Built-in array helpers for expressions.** `len`, `includes`, `some`, `every`, `count`, `where`, `sum`,
+  `pluck`, `sortBy`, `first`, `last` and `join` are callable from any binding without `registerHelper`, so
+  "is the list empty?" or "how many are done?" no longer needs a computed per screen. They accept an observable
+  or observableArray directly (`len(todos)`), read observable fields on items (`count(todos, 'done')`), and
+  those reads are tracked - ticking one row re-runs the count. `where` and `sortBy` return fresh arrays and can
+  feed `data-each` (`data-each="where(todos, 'done', false) key=id"`). Keys may be dotted paths and go through
+  the same `__proto__`/`constructor`/`prototype` guard as every other read. A registered helper of the same
+  name still wins.
+
 ## [1.2.1] - 2026-09-28
 
 ### Fixed

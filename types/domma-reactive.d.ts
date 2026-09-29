@@ -365,9 +365,9 @@ export function expressionDependencies(
     source: string | ExpressionAst | null,
     options?: ExpressionOptions
 ): Set<string>;
-/** Register a helper - the only kind of function an expression may call. */
+/** Register a helper. It takes precedence over a built-in (len, includes, where, ...) of the same name. */
 export function registerHelper<F extends (...args: any[]) => unknown>(name: string, fn: F): F;
-/** Remove a helper. */
+/** Remove a registered helper; a built-in of the same name applies again. */
 export function unregisterHelper(name: string): boolean;
 /** Empty the parse cache, returning how many entries were dropped. */
 export function clearExpressionCache(): number;

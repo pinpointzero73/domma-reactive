@@ -1386,7 +1386,7 @@ expressionDependencies('$parent.name');       // Set {} - position, not state
 | Logical       | `&& \|\| !` - short-circuiting                    |
 | Ternary       | `a ? b : c`                                      |
 | Unary         | `- + !`                                          |
-| Calls         | `helper(arg, …)` - **registered helpers only**   |
+| Calls         | `helper(arg, …)` - **built-in or registered helpers only** |
 | Context       | `$data`, `$root`, `$parent`, `$parents`, `$parentContext`, `$index`, `$length` |
 
 Precedence and associativity are JavaScript's. `1 + 2 * 3` is 7; `10 - 3 - 2` is 5. Nesting is capped at 64 levels.
@@ -1398,10 +1398,42 @@ holes (`[1,,2]`) and no trailing commas - each refused with a message saying so 
 calls (`data-bind-style="{color: tone}"`, `{{fmt(price, {currency: 'GBP'})}}` inside an attribute). Inside `{{ }}` text a
 closing `}}` ends the interpolation, so keep literals with braces out of mustache text.
 
+### Built-in helpers
+
+Expressions cannot call methods, so these ship ready to call - no `registerHelper` needed:
+
+| Helper | Returns |
+|--------|---------|
+| `len(list)` | length of an array or string, size of a Set or Map, `0` for anything else (including null) |
+| `includes(list, value)` | whether the list holds `value` (`===`), or a string contains it |
+| `some(list, key[, value])` | whether any item's `key` is truthy - or `=== value`, when given |
+| `every(list, key[, value])` | whether every item matches; `true` for an empty list |
+| `count(list[, key[, value]])` | how many items match; with no key, how many items |
+| `where(list, key[, value])` | the matching items, as a new array |
+| `sum(list[, key])` | total of the items, or of each item's `key`; non-numbers count as 0 |
+| `pluck(list, key)` | each item's `key`, as a new array |
+| `sortBy(list[, key[, 'desc']])` | a sorted copy; strings by `localeCompare`, missing values last |
+| `first(list)` / `last(list)` | an end item, or `undefined` |
+| `join(list[, separator])` | a string, `', '` between items by default |
+
+`key` is a property name or a dotted path (`'meta.tag'`); pass `null` to test the items themselves
+(`where(xs, null, 2)`). The list may be an observable or observableArray, and a field may be an observable - both are
+read for you, and the reads are tracked, so a binding re-runs when the list changes *or* when one row's field does:
+
+```html
+<p data-if="!len(todos)">Nothing to do.</p>
+<span data-bind-text="count(todos, 'done') + ' of ' + len(todos)"></span>
+<ul data-each="where(todos, 'done', false) key=id"><li data-bind-text="title"></li></ul>
+<span data-bind-text="join(pluck(tags, 'name'))"></span>
+```
+
+None of them mutates its input. A helper you register under the same name takes precedence; unregistering it brings
+the built-in back.
+
 ### What it does not support, and will not
 
 Assignment. `new`. Member calls - `user.toUpperCase()` does not work, and neither does `alert(1)`; the only callable
-things are helpers you registered. (`data-on-*` is the single exception, and only because an event fires outside every
+things are helpers - [built-in](#built-in-helpers) or registered. (`data-on-*` is the single exception, and only because an event fires outside every
 effect - see [`data-on-<event>`](#data-on-event).) Loose equality (`==`), nullish coalescing (`??`), regular expressions,
 template literals, comma sequences. Reads of `__proto__`, `constructor` and `prototype`, in
 any form - including `a[key]` where `key` holds `'__proto__'` at runtime.
