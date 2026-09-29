@@ -26,7 +26,7 @@
  *   logical         && || !            (short-circuiting)
  *   ternary         a ? b : c
  *   unary           - + !
- *   calls           helper(arg, ...)   registered helpers ONLY
+ *   calls           helper(arg, ...)   registered and built-in helpers ONLY
  *   context         $data $root $parent $index
  *
  * Absent by design: assignment, `new`, member calls (`x.foo()`), arbitrary
@@ -60,6 +60,7 @@
 
 import {isReactive} from './brand.js';
 import {CONTEXT_KEYS, toContext} from './context.js';
+import {createBuiltinHelpers} from './helpers.js';
 
 const PREFIX = '[Domma Reactive]';
 
@@ -135,6 +136,13 @@ class ExpressionError extends Error {}
 
 /** name → function. The only things an expression may call. */
 const helpers = new Map();
+
+/**
+ * len, includes, some, every, count, where, sum, pluck, sortBy, first, last,
+ * join - callable without registration. A registered helper of the same name
+ * wins. See helpers.js.
+ */
+const builtins = createBuiltinHelpers(readMember);
 
 /**
  * source → AST | null (null meaning "this source failed to parse").
@@ -741,7 +749,7 @@ function resolveIdentifier(name, context) {
 
 /** Apply a helper, or warn once and yield undefined. */
 function evaluateCall(name, args) {
-    const helper = helpers.get(name);
+    const helper = helpers.get(name) ?? builtins.get(name);
 
     if (typeof helper !== 'function') {
         if (!warnedHelpers.has(name)) {
@@ -1104,10 +1112,11 @@ export function registerHelper(name, fn) {
 }
 
 /**
- * Remove a helper.
+ * Remove a helper. A built-in of the same name, if there is one, applies
+ * again; built-ins themselves cannot be removed.
  *
  * @param {string} name
- * @returns {boolean} whether a helper of that name existed
+ * @returns {boolean} whether a registered helper of that name existed
  */
 export function unregisterHelper(name) {
     return helpers.delete(name);
