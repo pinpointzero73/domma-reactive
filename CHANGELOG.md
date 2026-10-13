@@ -8,6 +8,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Placeholders in ordinary attributes are no longer escaped twice.** `title="{{name}}"`, `aria-label="Actions for {{title}}"` and the like are written with `setAttribute`, which takes text, but were given the renderer's HTML-escaped string - so "Tom & Jerry" read "Tom &amp;amp; Jerry" in tooltips, screen-reader labels and `data-*` values of every `data-each` row. The value is now decoded once before it is set (a user typing `&amp;amp;` still sees `&amp;amp;`). `decodeAttribute` moved to a leaf module, `src/entities.js`, and also decodes `&#47;`, `&#x2F;`, `&#96;` and `&#x60;`.
+
 ## [1.3.0] - 2026-09-29
 
 ### Added

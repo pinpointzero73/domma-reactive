@@ -62,6 +62,7 @@
  * an empty box until the user types.
  */
 
+import {decodeAttribute} from './entities.js';
 import {BLOCKED_KEYS, compileExpression, evaluateAst, readMember} from './expression.js';
 import {CONTEXT_KEYS, createChildContext} from './context.js';
 import {liveItems, truthy} from './render.js';
@@ -264,7 +265,12 @@ const attrHandler = {
     update({binding, nodes, context, render}) {
         for (const el of nodes) {
             for (const part of binding.parts) {
-                const rendered = render(part.tmpl, context.$data);
+                // The renderer escapes for HTML (it also fills innerHTML), but setAttribute
+                // takes TEXT: written as rendered, "Tom & Jerry" became "Tom &amp; Jerry"
+                // in every title / aria-label / data-* filled from a placeholder. The
+                // template's own literal text is entity-encoded markup too, so one decode
+                // of the whole string gives exactly what the browser would have parsed.
+                const rendered = decodeAttribute(render(part.tmpl, context.$data));
                 el.setAttribute(part.name, rendered);
                 // Keep the live property in step for form controls: an <input>
                 // whose value attribute changes does not change what is typed
