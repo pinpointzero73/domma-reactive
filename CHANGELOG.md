@@ -8,6 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 0.4.2 were reconstructed from the tag history and are summaries rather than
 contemporaneous notes.
 
+## [1.3.2] - 2026-11-06
+
+### Changed
+
+- Refresh Rollup and Terser build dependencies and move the test environment to Vitest 5 and jsdom 31.
+- Verify the rebuilt browser, CommonJS and ES module artifacts against the current toolchain.
+
 ## [1.3.1] - 2026-10-13
 
 ### Fixed
